@@ -8,6 +8,11 @@ readme = "README.md"
 [dependencies]
 
 [dev-dependencies]
+gz = "0.9.0"
+
+[[example]]
+name = "manipulator"
+path = "examples/manipulator/src/main.rs"
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "docs-header.html"]

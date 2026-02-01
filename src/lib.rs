@@ -1380,13 +1380,13 @@ impl<T: Float, const C: usize> Matrix<C, C, T> {
             // swap row
             if max_row != i {
                 (matrix[max_row], matrix[i]) = (matrix[i], matrix[max_row]);
-                (inverse.0[max_row], inverse.0[i]) = (inverse.0[i], inverse.0[max_row]);
+                (inverse[max_row], inverse[i]) = (inverse[i], inverse[max_row]);
             }
 
             let pivot = matrix[i][i];
             (0..C).for_each(|c| {
                 matrix[i][c] /= pivot;
-                inverse.0[i][c] /= pivot;
+                inverse[i][c] /= pivot;
             });
 
             (0..C).filter(|&r| r != i).for_each(|r| {

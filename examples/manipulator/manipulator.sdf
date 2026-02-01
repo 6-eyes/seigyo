@@ -1,0 +1,202 @@
+<?xml version="1.0" ?>
+<sdf version="1.11">
+    <world name="factory">
+        <physics name="1ms" type="ignored">
+            <max_step_size>0.005</max_step_size>
+            <real_time_factor>1.0</real_time_factor>
+        </physics>
+        <plugin
+            filename="gz-sim-physics-system"
+            name="gz::sim::systems::Physics">
+        </plugin>
+        <plugin
+            filename="gz-sim-user-commands-system"
+            name="gz::sim::systems::UserCommands">
+        </plugin>
+        <plugin
+            filename="gz-sim-scene-broadcaster-system"
+            name="gz::sim::systems::SceneBroadcaster">
+        </plugin>
+
+        <light type="directional" name="sun">
+            <cast_shadows>false</cast_shadows>
+            <pose>0 0 10 0 0 0</pose>
+            <diffuse>0.8 0.8 0.8 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+            <attenuation>
+                <range>1000</range>
+                <constant>0.9</constant>
+                <linear>0.01</linear>
+                <quadratic>0.001</quadratic>
+            </attenuation>
+            <direction>-0.5 0.1 -0.9</direction>
+        </light>
+
+        <model name="ground_plane">
+            <static>true</static>
+            <link name="link">
+                <collision name="collision">
+                    <geometry>
+                        <plane>
+                            <normal>0 0 1</normal>
+                            <size>100 100</size>
+                        </plane>
+                    </geometry>
+                </collision>
+                <visual name="visual">
+                    <geometry>
+                        <plane>
+                            <normal>0 0 1</normal>
+                            <size>100 100</size>
+                        </plane>
+                    </geometry>
+                    <material>
+                        <ambient>0.8 0.8 0.8 1</ambient>
+                        <diffuse>0.8 0.8 0.8 1</diffuse>
+                        <specular>0.8 0.8 0.8 1</specular>
+                    </material>
+                </visual>
+            </link>
+        </model>
+
+        <model name="manipulator" canonical_link="link0">
+            <pose relative_to="world">0 0 0 0 0 0</pose>
+
+            <!-- link 0 -->
+            <link name="link0">
+                <pose relative_to="__model__">0 0 0 0 0 0</pose>
+                <visual name="visual">
+                    <geometry>
+                        <mesh>
+                            <uri>file://meshes/link-0.dae</uri>
+                            <scale>1 1 1</scale>
+                        </mesh>
+                    </geometry>
+                    <material>
+                        <ambient>0 0 1 1</ambient>
+                        <diffuse>0 0 1 1</diffuse>
+                        <specular>1 1 1 0</specular>
+                    </material>
+                </visual>
+                <collision name="collision">
+                    <geometry>
+                        <mesh>
+                            <uri>file://meshes/link-0.dae</uri>
+                            <scale>1 1 1</scale>
+                        </mesh>
+                    </geometry>
+                </collision>
+            </link>
+
+            <!-- link 1 -->
+             <link name="link1">
+                <pose relative_to="link0">0 0 0.084 0 0 0</pose>
+                <visual name="visual">
+                    <geometry>
+                        <mesh>
+                            <uri>file://meshes/link-1.dae</uri>
+                            <scale>1 1 1</scale>
+                        </mesh>
+                    </geometry>
+                    <material>
+                        <ambient>1 0 0 1</ambient>
+                        <diffuse>1 0 0 1</diffuse>
+                        <specular>1 1 1 0</specular>
+                    </material>
+                </visual>
+                <collision name="collision">
+                    <geometry>
+                        <mesh>
+                            <uri>file://meshes/link-1.dae</uri>
+                            <scale>1 1 1</scale>
+                        </mesh>
+                    </geometry>
+                </collision>
+             </link>
+
+            <!-- link 2 -->
+             <link name="link2">
+                <pose relative_to="link1">-0.15 0.02 0.16 -1.5707963268 3.14159265359 0</pose>
+                <visual name="visual">
+                    <geometry>
+                        <mesh>
+                            <uri>file://meshes/link-2.dae</uri>
+                            <scale>1 1 1</scale>
+                        </mesh>
+                    </geometry>
+                    <material>
+                        <ambient>0 0 1 1</ambient>
+                        <diffuse>0 0 1 1</diffuse>
+                        <specular>1 1 1 0</specular>
+                    </material>
+                </visual>
+                <collision name="collision">
+                    <geometry>
+                        <mesh>
+                            <uri>file://meshes/link-2.dae</uri>
+                            <scale>1 1 1</scale>
+                        </mesh>
+                    </geometry>
+                </collision>
+             </link>
+
+             <!-- joint 0 -->
+              <joint name="joint0" type="fixed">
+                <pose relative_to="link0"></pose>
+                <parent>world</parent>
+                <child>link0</child>
+              </joint>
+
+             <!-- joint 1 -->
+             <joint name="joint1" type="revolute">
+                <pose relative_to="link1"/>
+                <parent>link0</parent>
+                <child>link1</child>
+                <axis>
+                    <xyz expressed_in="link0">0 0 1</xyz>
+                    <dynamics>
+                        <friction>0</friction>
+                    </dynamics>
+                    <limit>
+                        <lower>-inf</lower>
+                        <upper>inf</upper>
+                        <velocity>inf</velocity>
+                    </limit>
+                </axis>
+             </joint>
+
+             <!-- joint 2 -->
+             <joint name="joint2" type="revolute">
+                <pose relative_to="link2"/>
+                <parent>link1</parent>
+                <child>link2</child>
+                <axis>
+                    <xyz expressed_in="link1">0 1 0</xyz>
+                    <dynamics>
+                        <friction>0</friction>
+                    </dynamics>
+                    <limit>
+                        <lower>-inf</lower>
+                        <upper>inf</upper>
+                        <velocity>inf</velocity>
+                    </limit>
+                </axis>
+             </joint>
+
+             <!-- joint 1 velocity -->
+             <plugin filename="gz-sim-joint-controller-system" name="gz::sim::systems::JointController">
+                <joint_name>joint1</joint_name>
+                <initial_velocity>0</initial_velocity>
+                <topic>manipulator/joint1</topic>
+             </plugin>
+
+             <!-- joint 2 velocity -->
+             <plugin filename="gz-sim-joint-controller-system" name="gz::sim::systems::JointController">
+                <joint_name>joint2</joint_name>
+                <initial_velocity>0</initial_velocity>
+                <topic>manipulator/joint2</topic>
+             </plugin>
+        </model>
+    </world>
+
+</sdf>
