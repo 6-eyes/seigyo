@@ -157,6 +157,7 @@ name = "seigyo"
 version = "0.1.0"
 dependencies = [
  "gz",
+ "log",
 ]
 
 [[package]]

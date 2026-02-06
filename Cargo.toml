@@ -9,6 +9,7 @@ readme = "README.md"
 
 [dev-dependencies]
 gz = "0.9.0"
+log = "0.4.29"
 
 [[example]]
 name = "manipulator"
