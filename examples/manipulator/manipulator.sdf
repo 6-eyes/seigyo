@@ -140,8 +140,8 @@
                 </collision>
              </link>
 
-             <!-- joint 0 -->
-              <joint name="joint0" type="fixed">
+             <!-- joint ground -->
+              <joint name="joint_ground" type="fixed">
                 <pose relative_to="link0"></pose>
                 <parent>world</parent>
                 <child>link0</child>
@@ -171,7 +171,7 @@
                 <parent>link1</parent>
                 <child>link2</child>
                 <axis>
-                    <xyz expressed_in="link1">0 1 0</xyz>
+                    <xyz expressed_in="link1">0 -1 0</xyz>
                     <dynamics>
                         <friction>0</friction>
                     </dynamics>
@@ -187,14 +187,14 @@
              <plugin filename="gz-sim-joint-controller-system" name="gz::sim::systems::JointController">
                 <joint_name>joint1</joint_name>
                 <initial_velocity>0</initial_velocity>
-                <topic>manipulator/joint1</topic>
+                <topic>manipulator/joint0</topic>
              </plugin>
 
              <!-- joint 2 velocity -->
              <plugin filename="gz-sim-joint-controller-system" name="gz::sim::systems::JointController">
                 <joint_name>joint2</joint_name>
                 <initial_velocity>0</initial_velocity>
-                <topic>manipulator/joint2</topic>
+                <topic>manipulator/joint1</topic>
              </plugin>
         </model>
     </world>

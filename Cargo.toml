@@ -10,6 +10,10 @@ readme = "README.md"
 [dev-dependencies]
 gz = "0.9.0"
 log = "0.4.29"
+tokio = { version = "1.49.0", features = [ "macros", "rt-multi-thread", "time", "sync", "fs" ] }
+simple_logger = { version = "5.1.0", default-features = false, features = [ "colors" ] }
+toml = "0.9.11"
+serde = { version = "1.0.228", features = [ "derive" ] }
 
 [[example]]
 name = "manipulator"
