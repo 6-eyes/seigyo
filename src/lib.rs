@@ -2280,15 +2280,17 @@ pub mod statics {
     }
 
     /// Trait implements forward and backward kinematics for manipulator arms.
-    pub trait Kinematics<const N: usize> {
+    pub trait KinematicsChain<const N: usize, T: Float = f32> {
+        /// Forward kinematics in bosy frame.
+        /// 
         /// **Reference:** Example 4.7 from Modern Robotics
         /// ```rust
-        /// use seigyo::{Matrix, statics::{Transformation, Screw, Kinematics}};
+        /// use seigyo::{Matrix, statics::{Transformation, Screw, KinematicsChain}};
         /// use core::f32::consts::PI;
         ///
         /// struct Manipulator;
         ///
-        /// impl Kinematics<7> for Manipulator{}
+        /// impl KinematicsChain<7> for Manipulator{}
         ///
         /// let m = Transformation::try_from(Matrix::from([
         ///     [1., 0., 0., 0.],
@@ -2298,78 +2300,83 @@ pub mod statics {
         /// ])).unwrap();
         ///
         /// let b_list = [
-        ///     (Screw::new(Matrix::from([[0.], [0.], [1.]]), Matrix::new_zero()).unwrap(), 0.),
-        ///     (Screw::new(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[0.060 + 0.3 + 0.55], [0.], [0.]])).unwrap(), PI / 4.),
-        ///     (Screw::new(Matrix::from([[0.], [0.], [1.]]), Matrix::new_zero()).unwrap(), 0.),
-        ///     (Screw::new(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[0.060 + 0.3], [0.], [0.045]])).unwrap(), -PI / 4.),
-        ///     (Screw::new(Matrix::from([[0.], [0.], [1.]]), Matrix::from([[0.], [0.], [0.]])).unwrap(), 0.),
-        ///     (Screw::new(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[0.060], [0.], [0.]])).unwrap(), -PI / 2.),
-        ///     (Screw::new(Matrix::from([[0.], [0.], [1.]]), Matrix::from([[0.], [0.], [0.]])).unwrap(), 0.),
+        ///     Screw::new(Matrix::from([[0.], [0.], [1.]]), Matrix::new_zero()).unwrap(),
+        ///     Screw::new(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[0.060 + 0.3 + 0.55], [0.], [0.]])).unwrap(),
+        ///     Screw::new(Matrix::from([[0.], [0.], [1.]]), Matrix::new_zero()).unwrap(),
+        ///     Screw::new(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[0.060 + 0.3], [0.], [0.045]])).unwrap(),
+        ///     Screw::new(Matrix::from([[0.], [0.], [1.]]), Matrix::from([[0.], [0.], [0.]])).unwrap(),
+        ///     Screw::new(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[0.060], [0.], [0.]])).unwrap(),
+        ///     Screw::new(Matrix::from([[0.], [0.], [1.]]), Matrix::from([[0.], [0.], [0.]])).unwrap(),
         /// ];
         ///
-        /// let fk = Manipulator::forward_in_body_frame(m, b_list);
+        /// let theta_list = [ 0., PI / 4., 0., -PI / 4., 0., -PI / 2., 0. ];
         ///
-        /// let fk_prediction = Matrix::from([
-        ///     [0., 0., -0.99999994, 0.31572855],
-        ///     [0., 1., 0., 0.],
-        ///     [0.99999994, 0., 0., 0.65708894],
-        ///     [0., 0., 0., 1.],
-        /// ]);
+        /// let fk = Manipulator::fk_body(m, b_list, theta_list);
         ///
-        /// assert_eq!(fk, fk_prediction);
+        /// assert_eq!(fk,
+        ///     Matrix::from([
+        ///         [0., 0., -0.99999994, 0.31572855],
+        ///         [0., 1., 0., 0.],
+        ///         [0.99999994, 0., 0., 0.65708894],
+        ///         [0., 0., 0., 1.]]
+        ///     )
+        /// );
         /// ```
-        fn forward_in_body_frame<T: Float>(m: Transformation<T>, b_theta_list: [impl Into<Transformation<T>>; N]) -> Transformation<T> {
-            b_theta_list.into_iter().fold(m, |acc, s| acc * s.into())
+        fn fk_body(m: Transformation<T>, b_list: [Screw<T>; N], theta_list: [T; N]) -> Transformation<T> {
+            b_list.into_iter().zip(theta_list).fold(m, |acc, (b_frame, theta)| acc * b_frame.exp(theta))
         }
         
-        fn forward_in_space_frame<T: Float>(m: Transformation<T>, s_theta_list: [impl Into<Transformation<T>>; N]) -> Transformation<T> {
-            s_theta_list.into_iter().rev().fold(m, |acc, s| s.into() * acc)
+        /// Forward kinematics in space frame
+        /// ```rust
+        /// use seigyo::{Matrix, statics::{Transformation, Screw, KinematicsChain}};
+        /// use core::f32::consts::PI;
+        ///
+        /// struct Manipulator;
+        ///
+        /// impl KinematicsChain<6> for Manipulator {}
+        /// 
+        /// let m = Transformation::try_from(Matrix::from([
+        ///     [-1., 0., 0., 0.425 + 0.392],
+        ///     [0., 0., 1., 0.109 + 0.082],
+        ///     [0., 1., 0., 0.089 - 0.095],
+        ///     [0., 0., 0., 1.],
+        /// ])).unwrap();
+        ///
+        /// let s_list = [
+        ///     Screw::new(Matrix::from([[0.], [0.], [1.]]), Matrix::new_zero()).unwrap(),
+        ///     Screw::new(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[-0.089], [0.], [0.]])).unwrap(),
+        ///     Screw::new(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[-0.089], [0.], [0.425]])).unwrap(),
+        ///     Screw::new(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[-0.089], [0.], [0.425 + 0.392]])).unwrap(),
+        ///     Screw::new(Matrix::from([[0.], [0.], [-1.]]), Matrix::from([[-0.109], [0.425 + 0.392], [0.]])).unwrap(),
+        ///     Screw::new(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[0.095 - 0.089], [0.], [0.425 + 0.392]])).unwrap(),
+        /// ];
+        ///
+        /// let theta_list = [ 0., -PI / 2., 0., 0., PI / 2., 0. ];
+        ///
+        /// let fk = Manipulator::fk_space(m, s_list, theta_list);
+        ///
+        /// assert_eq!(
+        ///     fk,
+        ///     Matrix::from([
+        ///         [0., 0., 1., 0.89900005],
+        ///         [0., 1., 0., 0.831],
+        ///         [-1., 0., 0., 0.906],
+        ///         [0., 0., 0., 1.],
+        ///     ])
+        /// );
+        /// ```
+        fn fk_space(m: Transformation<T>, s_list: [Screw<T>; N], theta_list: [T; N]) -> Transformation<T> {
+            s_list.into_iter().zip(theta_list).fold(m, |acc, (s_frame, theta)| s_frame.exp(theta) * acc)
+        }
+
+        fn j_body(s_list: [Screw<T>; N], theta_list: [T; N]) -> Matrix<6, N> {
+            todo!()
+        }
+
+        fn j_space(b_list: [Screw<T>; N], theta_list: [T; N]) -> Matrix<6, N> {
+            todo!()
         }
     }
-
-    // /// ## Fowrard kinematice in body frame
-    // /// ### Example
-    // pub fn forward_kinematice_in_body_frame<T: Float>(m: Transformation<T>, b_theta_list: &[(Screw<T>, T)]) -> Transformation<T> {
-    //     b_theta_list.iter().fold(m, |acc, s| acc * Transformation::from(s))
-    // }
-
-    // /// ## Fowrard kinematice in space frame
-    // /// ### Example
-    // /// **Reference:** Example 4.5 from Modern Robotics
-    // /// ```rust
-    // /// use seigyo::{Matrix, statics::{Transformation, Screw, forward_kinematice_in_space_frame}};
-    // /// use core::f32::consts::PI;
-    // ///
-    // /// let m = Transformation::try_from(Matrix::from([
-    // ///     [-1., 0., 0., 0.425 + 0.392],
-    // ///     [0., 0., 1., 0.109 + 0.082],
-    // ///     [0., 1., 0., 0.089 - 0.095],
-    // ///     [0., 0., 0., 1.],
-    // /// ])).unwrap();
-    // ///
-    // /// let s_list = [
-    // ///     (Screw::new(Matrix::from([[0.], [0.], [1.]]), Matrix::new_zero()).unwrap(), 0.),
-    // ///     (Screw::new(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[-0.089], [0.], [0.]])).unwrap(), -PI / 2.),
-    // ///     (Screw::new(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[-0.089], [0.], [0.425]])).unwrap(), 0.),
-    // ///     (Screw::new(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[-0.089], [0.], [0.425 + 0.392]])).unwrap(), 0.),
-    // ///     (Screw::new(Matrix::from([[0.], [0.], [-1.]]), Matrix::from([[-0.109], [0.425 + 0.392], [0.]])).unwrap(), PI / 2.),
-    // ///     (Screw::new(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[0.095 - 0.089], [0.], [0.425 + 0.392]])).unwrap(), 0.),
-    // /// ];
-    // ///
-    // /// let fk = forward_kinematice_in_space_frame(m, &s_list);
-    // ///
-    // /// let fk_prediction = Matrix::from([
-    // ///     [0., -1., 0., 0.095],
-    // ///     [1., 0., 0., 0.10899997],
-    // ///     [0., 0., 1., 0.98800004],
-    // ///     [0., 0., 0., 1.],
-    // /// ]);
-    // ///
-    // /// assert_eq!(fk, fk_prediction);
-    // /// ```
-    // pub fn forward_kinematice_in_space_frame<T: Float>(m: Transformation<T>, s_theta_list: &[(Screw<T>, T)]) -> Transformation<T> {
-    //     s_theta_list.iter().rev().fold(m, |acc, s| Transformation::from(s) * acc)
-    // }
 
     // /// Method to find the space jacobian
     // pub fn jacobian_space<T: Float, const N: usize>(s_theta_list: &[(Screw<T>, T); N]) -> Matrix<6, N, T> {

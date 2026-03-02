@@ -43,23 +43,23 @@ mod manipulator {
             exit(4);
         });
 
-        manipulator.set_joint_angles(&[ 0., std::f64::consts::FRAC_PI_2 ]).await.unwrap_or_else(|e| {
+        manipulator.set_joint_angles(&[ 0., std::f64::consts::FRAC_PI_2]).await.unwrap_or_else(|e| {
             log::error!("unable to run manipulator: {e}");
             exit(5);
         });
     }
 
-    struct Manipulator<'a, const N: usize> {
+    struct Manipulator<'cl, const N: usize> {
         joints: [Publisher<Double>; N],
-        clock: &'a Clock,
+        clock: &'cl Clock,
     }
 
-    impl<'a, const N: usize> Manipulator<'a, N> {
+    impl<'cl, const N: usize> Manipulator<'cl, N> {
         /// ## Initialize the manipulator
         /// Subscribes to joint topics. The prefix for the 
         /// 
         /// **Note:** This method blocks the thread for 100ms, waiting for the zmq bus to initialize. If this is not done, the first immediate message is skipped.
-        async fn init(node: &mut Node, clock: &'a Clock) -> Result<Self, Error> {
+        async fn init(node: &mut Node, clock: &'cl Clock) -> Result<Self, Error> {
             /// The prefix for joint topic
             const JOINT_TOPIC_PREFIX: &str = "/manipulator/joint";
 
@@ -72,8 +72,12 @@ mod manipulator {
                 return Err(Error::Init(uninitialized_index))
             }
 
-            // wait for the connection
-            clock.sleep(Duration::from_millis(100)).await;
+            // wait for the connection using real (system) time,
+            // regardless of which clock mode is active
+            tokio::time::sleep(Duration::from_millis(100)).await;
+
+            // wait for the simulation to start
+            clock.wait_active().await;
 
             Ok(Self { joints: maybe_joints.map(Option::unwrap), clock })
         }
@@ -83,8 +87,8 @@ mod manipulator {
         /// 
         /// **Note:** This method blocks the thread until all the joints are placed in the desired position
         async fn set_joint_angles(&mut self, theta_array: &[f64; N]) -> Result<(), Error> {
-            log::debug!("setting jount angles: {theta_array:?}");
-            const TIME_MILLIS: u64 = 1000;
+            log::debug!("setting joint angles: {theta_array:?}");
+            const TIME_MILLIS: u64 = 8000;
 
             let vel_array = theta_array.map(|v| v * 1000. / TIME_MILLIS as f64);
             // start
@@ -121,11 +125,17 @@ mod manipulator {
         }
     }
 
+    impl<const N: usize> seigyo::statics::KinematicsChain<N> for Manipulator<'_, N> {}
+
     mod time {
         use std::ops::Add;
         use gz::{msgs::clock::Clock as GzClock, transport::Node};
         use tokio::{sync::watch, task::spawn_blocking, time::{Duration, sleep, timeout}};
+
         use super::Error;
+
+        /// The amount of time to wait for a clock message from the simulation
+        const SIM_WAIT_TIMEOUT: u64 = 2000;
 
         #[derive(Debug, Default)]
         pub(super) enum Clock {
@@ -138,42 +148,21 @@ mod manipulator {
 
         impl Clock {
             /// Initializes the simulation clock.
-            /// 
-            /// Blocks until simulation starts
             pub(crate) async fn connect_sim(node: &mut Node) -> Result<Self, Error> {
-                let (tx, mut rx) = watch::channel(Time::default());
+                let (tx, rx) = watch::channel(Time::default());
 
                 const CLOCK_TOPIC: &str = "/clock";
                 let receiver = node.subscribe_channel::<GzClock>(CLOCK_TOPIC, 10).ok_or(Error::Subscribe(CLOCK_TOPIC.to_string()))?;
 
                 // receiver
-                spawn_blocking(move || for clock_msg in receiver {
-                    // set time
-                    if clock_msg.sim.is_some() {
-                        let time = (clock_msg.sim.sec, clock_msg.sim.nsec);
-                        if tx.send(time.into()).is_err() {
-                            log::error!("unable to set sim time");
-                        }
-                    }
-                });
-
-                // wait for the simulation to start
-                loop {
-                    match timeout(Duration::from_secs(2), rx.changed()).await {
-                        Ok(Ok(_)) => {
-                            log::info!("simulation connected");
-                            break;
-                        },
-                        Ok(Err(_)) => {
-                            log::error!("clock handle dropped");
-                            break;
-                        },
-                        Err(_) => log::warn!("waiting for simulation to start (no message on clock topic)"),
-                    }
-                }
+                spawn_blocking(move ||
+                    receiver
+                        .iter()
+                        .filter_map(|clock_msg| clock_msg.sim.as_ref().map(|sim| Time::new(sim.sec, sim.nsec)))
+                        .for_each(|time| if tx.send(time).is_err() { log::error!("unable to set sim time") })
+                );
 
                 Ok(Self::SimClock(rx))
-
             }
 
             pub(super) fn connect_real() -> Self {
@@ -184,12 +173,12 @@ mod manipulator {
                 match self {
                     Self::SystemClock => sleep(duration).await,
                     Self::SimClock(rx) => {
+                        let mut rx = rx.clone();
                         let target = *rx.borrow() + duration;
 
                         // sleep for 'duration' amount of time because sim time is always greater than real time
                         sleep(duration).await;
 
-                        let mut rx = rx.clone();
                         // initial time overflow check
                         if *rx.borrow() >= target {
                             return;
@@ -204,15 +193,53 @@ mod manipulator {
                     }
                 }
             }
+
+            /// Waits until the clock becomes active, logging a warning every [`SIM_WAIT_TIMEOUT`] ms.
+            ///
+            /// For [`Clock::SystemClock`] this returns immediately.
+            ///
+            /// For [`Clock::SimClock`] it blocks until simulation is playing (sim time > 0).
+            pub async fn wait_active(&self) {
+                if let Self::SimClock(rx) = self {
+                    if rx.borrow().to_nanos() > 0 { return; }
+                    let mut rx = rx.clone();
+
+                    let duration = Duration::from_millis(SIM_WAIT_TIMEOUT);
+                    loop {
+                        match timeout(duration, rx.changed()).await {
+                            Ok(Ok(_)) => {
+                                if rx.borrow().to_nanos() > 0 { break; }
+                                log::warn!("simulation not initiated yet. will check in {SIM_WAIT_TIMEOUT} ms");
+                                sleep(duration).await;
+                                rx.borrow_and_update();
+                            }
+                            Ok(Err(_)) => {
+                                log::error!("clock handle dropped");
+                                return;
+                            },
+                            Err(_) => {
+                                log::warn!("gazebo instance not running. will check in {SIM_WAIT_TIMEOUT} ms");
+                            },
+                        }
+                    }
+                }
+            }
         }
 
-        #[derive(Debug, Default, Clone, Copy, PartialEq)]
+        #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd)]
         pub(super) struct Time {
             sec: u64,
             nsec: u32,
         }
 
         impl Time {
+            fn new(sec: i64, nsec: i32) -> Self {
+                assert!(sec >= 0, "simulation seconds cannot be negative");
+                assert!(nsec >= 0, "simulation nanoseconds cannot be negative");
+
+                Self { sec: sec as u64, nsec: nsec as u32 }
+            }
+            
             #[inline]
             fn to_nanos(&self) -> u128 {
                 self.sec as u128 * 1_000_000_000 + self.nsec as u128
@@ -231,24 +258,6 @@ mod manipulator {
             fn add(self, dur: Duration) -> Self::Output {
                 let nsec = self.to_nanos() + dur.as_nanos();
                 Self::from_nanos(nsec)
-            }
-        }
-
-        impl PartialOrd for Time {
-            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-                self.to_nanos().partial_cmp(&other.to_nanos())
-            }
-        }
-
-        impl From<(i64, i32)> for Time {
-            fn from((sec, nsec): (i64, i32)) -> Self {
-                assert!(sec >= 0, "simulation seconds cannot be negative");
-                assert!(nsec >= 0, "simulation nanoseconds cannot be negative");
-
-                Self {
-                    sec: sec as u64,
-                    nsec: nsec as u32,
-                }
             }
         }
     }
@@ -326,7 +335,7 @@ mod manipulator {
         Config(config::Error),
     }
 
-    impl std::fmt::Display for Error {
+    impl core::fmt::Display for Error {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
                 Self::Init(joint) => write!(f, "initialization error for joint: {joint}"),

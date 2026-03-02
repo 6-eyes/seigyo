@@ -89,7 +89,7 @@
             </link>
 
             <!-- link 1 -->
-             <link name="link1">
+            <link name="link1">
                 <pose relative_to="link0">0 0 0.084 0 0 0</pose>
                 <visual name="visual">
                     <geometry>
@@ -115,8 +115,8 @@
              </link>
 
             <!-- link 2 -->
-             <link name="link2">
-                <pose relative_to="link1">-0.15 0.02 0.16 -1.5707963268 3.14159265359 0</pose>
+            <link name="link2">
+                <pose relative_to="link1">-0.15 0.02 0.16 -1.5707963268 0 0</pose>
                 <visual name="visual">
                     <geometry>
                         <mesh>
@@ -134,6 +134,84 @@
                     <geometry>
                         <mesh>
                             <uri>file://meshes/link-2.dae</uri>
+                            <scale>1 1 1</scale>
+                        </mesh>
+                    </geometry>
+                </collision>
+             </link>
+
+            <!-- link 3 -->
+            <link name="link3">
+                <pose relative_to="link2">-0.245 -0.045 -0.048 0 -1.5707963268 0</pose>
+                <visual name="visual">
+                    <geometry>
+                        <mesh>
+                            <uri>file://meshes/link-3.dae</uri>
+                            <scale>1 1 1</scale>
+                        </mesh>
+                    </geometry>
+                    <material>
+                        <ambient>1 0 0 1</ambient>
+                        <diffuse>1 0 0 1</diffuse>
+                        <specular>1 1 1 0</specular>
+                    </material>
+                </visual>
+                <collision name="collision">
+                    <geometry>
+                        <mesh>
+                            <uri>file://meshes/link-3.dae</uri>
+                            <scale>1 1 1</scale>
+                        </mesh>
+                    </geometry>
+                </collision>
+             </link>
+
+            <!-- link 4 -->
+            <link name="link4">
+                <pose relative_to="link3">0 0 0.271 3.14159265359 0 0</pose>
+                <visual name="visual">
+                    <geometry>
+                        <mesh>
+                            <uri>file://meshes/link-4.dae</uri>
+                            <scale>1 1 1</scale>
+                        </mesh>
+                    </geometry>
+                    <material>
+                        <ambient>0 0 1 1</ambient>
+                        <diffuse>0 0 1 1</diffuse>
+                        <specular>1 1 1 0</specular>
+                    </material>
+                </visual>
+                <collision name="collision">
+                    <geometry>
+                        <mesh>
+                            <uri>file://meshes/link-4.dae</uri>
+                            <scale>1 1 1</scale>
+                        </mesh>
+                    </geometry>
+                </collision>
+             </link>
+
+            <!-- link 5 -->
+            <link name="link5">
+                <pose relative_to="link4">0 0 -0.190 0 1.5707963268 0</pose>
+                <visual name="visual">
+                    <geometry>
+                        <mesh>
+                            <uri>file://meshes/link-5.dae</uri>
+                            <scale>1 1 1</scale>
+                        </mesh>
+                    </geometry>
+                    <material>
+                        <ambient>1 0 0 1</ambient>
+                        <diffuse>1 0 0 1</diffuse>
+                        <specular>1 1 1 0</specular>
+                    </material>
+                </visual>
+                <collision name="collision">
+                    <geometry>
+                        <mesh>
+                            <uri>file://meshes/link-5.dae</uri>
                             <scale>1 1 1</scale>
                         </mesh>
                     </geometry>
@@ -171,7 +249,61 @@
                 <parent>link1</parent>
                 <child>link2</child>
                 <axis>
-                    <xyz expressed_in="link1">0 -1 0</xyz>
+                    <xyz expressed_in="link1">0 1 0</xyz>
+                    <dynamics>
+                        <friction>0</friction>
+                    </dynamics>
+                    <limit>
+                        <lower>-inf</lower>
+                        <upper>inf</upper>
+                        <velocity>inf</velocity>
+                    </limit>
+                </axis>
+             </joint>
+
+             <!-- joint 3 -->
+             <joint name="joint3" type="revolute">
+                <pose relative_to="link3">0 0.045 0.05 0 0 0</pose>
+                <parent>link2</parent>
+                <child>link3</child>
+                <axis>
+                    <xyz expressed_in="link2">0 0 1</xyz>
+                    <dynamics>
+                        <friction>0</friction>
+                    </dynamics>
+                    <limit>
+                        <lower>-inf</lower>
+                        <upper>inf</upper>
+                        <velocity>inf</velocity>
+                    </limit>
+                </axis>
+             </joint>
+
+             <!-- joint 4 -->
+             <joint name="joint4" type="revolute">
+                <pose relative_to="link4">0 0 0 0 0 0</pose>
+                <parent>link3</parent>
+                <child>link4</child>
+                <axis>
+                    <xyz expressed_in="link3">0 0 1</xyz>
+                    <dynamics>
+                        <friction>0</friction>
+                    </dynamics>
+                    <limit>
+                        <lower>-inf</lower>
+                        <upper>inf</upper>
+                        <velocity>inf</velocity>
+                    </limit>
+                </axis>
+             </joint>
+
+             <!-- joint 5 -->
+             <joint name="joint5" type="revolute">
+                <pose relative_to="link5">-0.052 0 0 0 0 0</pose>
+                <parent>link4</parent>
+                <child>link5</child>
+                <axis>
+                    <xyz expressed_in="link4">1 0 0</xyz>
                     <dynamics>
                         <friction>0</friction>
                     </dynamics>
@@ -195,6 +327,27 @@
                 <joint_name>joint2</joint_name>
                 <initial_velocity>0</initial_velocity>
                 <topic>manipulator/joint1</topic>
+             </plugin>
+
+             <!-- joint 3 velocity -->
+             <plugin filename="gz-sim-joint-controller-system" name="gz::sim::systems::JointController">
+                <joint_name>joint3</joint_name>
+                <initial_velocity>0</initial_velocity>
+                <topic>manipulator/joint2</topic>
+             </plugin>
+
+             <!-- joint 4 velocity -->
+             <plugin filename="gz-sim-joint-controller-system" name="gz::sim::systems::JointController">
+                <joint_name>joint4</joint_name>
+                <initial_velocity>0</initial_velocity>
+                <topic>manipulator/joint3</topic>
+             </plugin>
+
+             <!-- joint 5 velocity -->
+             <plugin filename="gz-sim-joint-controller-system" name="gz::sim::systems::JointController">
+                <joint_name>joint5</joint_name>
+                <initial_velocity>0</initial_velocity>
+                <topic>manipulator/joint4</topic>
              </plugin>
         </model>
     </world>
