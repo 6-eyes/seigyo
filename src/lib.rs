@@ -28,6 +28,9 @@ pub trait Float:
     /// method to produce unity vector for the floating type
     fn one() -> Self;
 
+    /// method to return 10
+    fn ten() -> Self;
+
     /// abstracting round from floating types
     fn round(self) -> Self;
 
@@ -76,6 +79,11 @@ impl Float for f32 {
     #[inline(always)]
     fn one() -> Self {
         1.
+    }
+
+    #[inline(always)]
+    fn ten() -> Self {
+        10.
     }
 
     #[inline(always)]
@@ -132,6 +140,11 @@ impl Float for f64 {
     }
 
     #[inline(always)]
+    fn ten() -> Self {
+        10.
+    }
+
+    #[inline(always)]
     fn round(self) -> Self {
         self.round()
     }
@@ -164,7 +177,7 @@ impl Float for f64 {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Complex<T: Float = f32>(T, T);
+pub struct Complex<T: Float = f64>(T, T);
 
 impl<T: Float> Default for Complex<T> {
     fn default() -> Self {
@@ -711,7 +724,7 @@ impl std::error::Error for MatrixError {}
 
 /// Defines a matrix
 #[derive(Debug, PartialEq, Clone)]
-pub struct Matrix<const R: usize, const C: usize, T: Float = f32>([[Complex<T>; C]; R]);
+pub struct Matrix<const R: usize, const C: usize, T: Float = f64>([[Complex<T>; C]; R]);
 
 impl<T: Float, const R: usize, const C: usize> core::ops::Deref for Matrix<R, C, T> {
     type Target = [[Complex<T>; C]; R];
@@ -752,17 +765,22 @@ impl<T: Float, const R: usize, const C: usize> core::fmt::Display for Matrix<R, 
     /// use seigyo::Matrix;
     ///
     /// let matrix = Matrix::from([[10., 0., 20.], [0., 30., 0.], [200., 0., 100.]]);
-    /// assert_eq!("│\t10\t0\t20\t│\n│\t0\t30\t0\t│\n│\t200\t0\t100\t│\n", matrix.to_string());
+    /// assert_eq!("│  10  0  20 │\n│   0 30   0 │\n│ 200  0 100 │\n", matrix.to_string());
     /// ```
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        for i in 0..R {
-            write!(f, "│\t")?;
+        let strings: [[String; C]; R] = core::array::from_fn(|i| {
+            core::array::from_fn(|j| format!("{}", self.0[i][j]))
+        });
+        let col_widths: [usize; C] = core::array::from_fn(|j| {
+            (0..R).map(|i| strings[i][j].len()).max().unwrap_or(0)
+        });
+        for s in strings.iter().take(R) {
+            write!(f, "│")?;
             for j in 0..C {
-                write!(f, "{}\t", self.0[i][j])?;
+                write!(f, " {:>width$}", s[j], width = col_widths[j])?;
             }
-            writeln!(f, "│")?;
+            writeln!(f, " │")?;
         }
-
         Ok(())
     }
 }
@@ -1137,8 +1155,9 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
     /// 2. Multiply the matrix by precision value $P$ say 1000.
     /// 3. Round the elements of the matrix: `M.round()`.
     /// 4. Divide the matrix by precision value $P$.
-    pub fn round(mut self) -> Self {
-        self.0.iter_mut().for_each(|r| r.iter_mut().for_each(|c| *c = c.round()));
+    pub fn round(mut self, decimal_places: u32) -> Self {
+        let factor = T::ten().powi(decimal_places as i32);
+        self.0.iter_mut().for_each(|r| r.iter_mut().for_each(|c| *c = (*c * factor).round() / factor));
         self
     }
 
@@ -1162,10 +1181,23 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
     /// use seigyo::Matrix;
     ///
     /// let a = Matrix::from([[12., -51., 4.], [6., 167., -68.], [-4., 24., -41.]]);
-    /// let (q, r) = a.qr().unwrap();
+    /// let (q, r) = {
+    ///     let (q, r) = a.qr().unwrap();
+    ///     // round to 2 decimal places
+    ///     (q.round(2), r.round(2))
+    /// };
     ///
-    /// assert_eq!(q, Matrix::from([[-0.857142857142857, 0.394285714285714, 0.3314285714285714], [-0.42857142857142855, -0.9028571428571422, -0.03428571428571427], [0.2857142857142857, -0.17142857142857137, 0.942857142857143]]));
-    /// assert_eq!(r, Matrix::from([[-13.999999999999998, -21.000000000000004, 14.000000000000002], [-0.0000000000000007783517420333592, -174.9999999999999, 69.99999999999996], [-0.0000000000000005335902659890752, 0.000000000000007105427357601002, -35.]]));
+    /// assert_eq!(q, Matrix::from([
+    ///     [-0.86, 0.39, 0.33],
+    ///     [-0.43, -0.9, -0.03],
+    ///     [0.29, -0.17, 0.94]
+    /// ]));
+    /// 
+    /// assert_eq!(r, Matrix::from([
+    ///     [-14., -21., 14.],
+    ///     [0., -175., 70.],
+    ///     [0., 0., -35.]
+    /// ]));
     /// ```
     ///
     /// ```rust, should_panic
@@ -1177,14 +1209,15 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
     /// ```
     pub fn qr(&self) -> Result<(Matrix<R, R, T>, Matrix<R, C, T>), MatrixError> {
         // todo: for m < n
-        let mut r = self.to_owned();
         let mut q = Matrix::new_identity();
+        let mut r = self.to_owned();
 
         let two = T::one() + T::one();
+
         for i in 0..C {
-            // norm of i-th column
-            let norm_x_squared = (i..R).map(|k| r[k][i].norm_squared()).sum::<T>();
-            let norm = norm_x_squared.sqrt();
+            // norm of i-th column (rows i..R)
+            let norm_x_sq = (i..R).map(|k| r[k][i].norm_squared()).sum::<T>();
+            let norm = norm_x_sq.sqrt();
             if norm < T::tolerance() {
                 return Err(MatrixError::Singular);
             }
@@ -1194,43 +1227,158 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
                 false => -(r[i][i].normalize() * norm),
             };
 
-            // u normalized is:
-            // sqrt((x_1 - alpha)^2 + x_2^2 + x_3^2 + ...)
-            // sqrt(alpha^2 - 2 * x_1 * alpha + x_1^2 + x_2^2 + x_3^2 + ...)
-            // sqrt(alpha^2 - 2 * x_1 * alpha + norm_x_squared)
-            let u_norm = (norm_x_squared + alpha.norm_squared() - two * r[i][i].dot(alpha)).sqrt();
-
-            if u_norm.abs() < T::tolerance() {
-                // no normalization is required
-                // householder matrix is identity
-                // no change in r and q
+            let v_norm_sq = two * (norm_x_sq - r[i][i].dot(alpha));
+            if v_norm_sq.sqrt() < T::tolerance() {
                 continue;
             }
+                
+            let tau = two / v_norm_sq;
 
-            let mut u_cache: [Option<Complex<T>>; R] = core::array::from_fn(|_| None);
-            let mut u = |k: usize| match u_cache[k] { // k ranges from i..R
-                Some(res) => res,
-                None => {
-                    let mut u_k = r[k][i];
-                    if k == i {
-                        u_k -= alpha;
-                    }
+            // unnormalized Householder vector v[i..R], zero-padded for k < i
+            let v = core::array::from_fn::<Complex<T>, R, _>(|k| match k.cmp(&i) {
+                core::cmp::Ordering::Less => Complex::default(),
+                core::cmp::Ordering::Equal => r[k][i] - alpha,
+                core::cmp::Ordering::Greater => r[k][i],
+            });
 
-                    let res = u_k / u_norm;
-                    u_cache[k] = Some(res);
-                    res
-                },
-            };
+            // column-by-column: dot is fully computed before its column is written
+            for j in i..C {
+                let dot = (i..R).map(|k| v[k].conjugate() * r[k][j]).sum::<Complex<T>>();
+                (i..R).for_each(|k| r[k][j] -= v[k] * dot * tau);
+            }
 
-            // create q
-            let mut q_loc = Matrix::new_identity();
-            (i..R).flat_map(|row| (i..C).map(move |col| (row, col))).for_each(|(row, col)| q_loc[row][col] -= u(row) * u(col) * two);
-
-            r = &q_loc * r;
-            q *= q_loc.conjugate_transpose();
+            // row-by-row: dot is fully computed before its row is written
+            for j in 0..R {
+                let dot = (i..R).map(|k| q[j][k] * v[k]).sum::<Complex<T>>();
+                (i..R).for_each(|k| q[j][k] -= dot * v[k].conjugate() * tau);
+            }
         }
         
         Ok((q, r))
+    }
+
+    /// ## SVD
+    /// Deomposes the matrix into three matrices.
+    ///
+    /// ### Example
+    /// ```rust
+    /// use seigyo::Matrix;
+    ///
+    /// let a = Matrix::from([
+    ///     [0.8595, 0.7176, 0.9781, 0.8116, 0.2164],
+    ///     [0.8886, 0.05399, 0.2921, 0.7058, 0.1801],
+    ///     [0.8149, 0.367, 0.04329, 0.5527, 0.7479],
+    ///     [0.7431, 0.9701, 0.9428, 0.5411, 0.0009715],
+    ///     [0.8033, 0.8404, 0.9647, 0.9118, 0.8811],
+    ///     [0.05875, 0.4113, 0.03543, 0.1149, 0.8648],
+    ///     [0.7246, 0.3075, 0.4898, 0.8406, 0.5857],
+    ///     [0.538, 0.5798, 0.4514, 0.6041, 0.01276],
+    ///     [0.7342, 0.001529, 0.2108, 0.426, 0.5745],
+    ///     [0.6983, 0.7891, 0.4445, 0.2376, 0.1985],
+    /// ]);
+    /// println!("original:\n{a}");
+    ///
+    /// let (u, m, v) = {
+    ///     let (u, m, v) = a.svd().unwrap();
+    ///     let v_t = v.clone().conjugate_transpose();
+    ///     println!("product:\n{}", &u * &m * v_t);
+    ///     (u.round(2), m.round(2), v.round(2))
+    /// };
+    ///
+    /// todo!("not yet implemented")
+    /// ```
+    pub fn svd(&self) -> Result<(Matrix<R, R, T>, Matrix<R, C, T>, Matrix<C, C, T>), MatrixError> {
+        let mut u = Matrix::new_identity();
+        let mut m = self.to_owned();
+        let mut v = Matrix::new_identity();
+
+        let two = T::one() + T::one();
+
+        for i in 0..C {
+            // column reflection block
+            {
+                // norm of i-th column (rows i..R)
+                let norm_x_sq = (i..R).map(|k| m[k][i].norm_squared()).sum::<T>();
+                let norm = norm_x_sq.sqrt();
+                if norm < T::tolerance() {
+                    return Err(MatrixError::Singular);
+                }
+
+                let alpha = match m[i][i].is_zero() {
+                    true => norm.into(),
+                    false => -(m[i][i].normalize() * norm),
+                };
+
+                let v_norm_sq = two * (norm_x_sq - m[i][i].dot(alpha));
+
+                // if norm is less than tolerence, the column is already reduced
+                if v_norm_sq.sqrt() >= T::tolerance() {
+                    let tau = two / v_norm_sq;
+
+                    // unnormalized Householder vector v[i..R], zero-padded for k < i
+                    let x = core::array::from_fn::<Complex<T>, R, _>(|k| match k.cmp(&i) {
+                        core::cmp::Ordering::Less => Complex::default(),
+                        core::cmp::Ordering::Equal => m[k][i] - alpha,
+                        core::cmp::Ordering::Greater => m[k][i],
+                    });
+
+                    // column-by-column: dot is fully computed before its column is written
+                    for j in i..C {
+                        let dot = (i..R).map(|k| x[k].conjugate() * m[k][j]).sum::<Complex<T>>();
+                        (i..R).for_each(|k| m[k][j] -= x[k] * dot * tau);
+                    }
+
+                    // row-by-row: dot is fully computed before its row is written
+                    for j in 0..R {
+                        let dot = (i..R).map(|k| u[j][k] * x[k]).sum::<Complex<T>>();
+                        (i..R).for_each(|k| u[j][k] -= dot * x[k].conjugate() * tau);
+                    }
+                }
+            }
+
+            // row reflection block
+            // if C <= 2, then it is already row normalized
+            if C > 2 && i < C - 2 {
+                let pc = i + 1; // pivot column
+                let norm_sq = (pc..C).map(|j| m[i][j].norm_squared()).sum::<T>();
+                let norm = norm_sq.sqrt();
+
+                // if norm from pivot is zero in the row, the row is already reduced
+                if norm >= T::tolerance() {
+                    let alpha = match m[i][pc].is_zero() {
+                        true => norm.into(),
+                        false => -(m[i][pc].normalize() * norm),
+                    };
+
+                    let v_norm_sq = two * (norm_sq - m[i][pc].dot(alpha));
+
+                    // if norm of elements after pivot is zero, the row is already reduced
+                    if v_norm_sq.sqrt() >= T::tolerance() {
+                        let tau = two / v_norm_sq;
+
+                        let x = core::array::from_fn::<Complex<T>, C, _>(|j| match j.cmp(&pc) {
+                            core::cmp::Ordering::Less => Complex::default(),
+                            core::cmp::Ordering::Equal => m[i][j] - alpha,
+                            core::cmp::Ordering::Greater => m[i][j],
+                        });
+
+                        for j in i..R {
+                            let dot = (pc..C).map(|k| x[k].conjugate() * m[j][k]).sum::<Complex<T>>();
+                            (pc..C).for_each(|k| m[j][k] -= x[k] * dot * tau);
+                        }
+
+                        for j in 0..C {
+                            let dot = (pc..C).map(|k| v[j][k] * x[k]).sum::<Complex<T>>();
+                            (pc..C).for_each(|k| v[j][k] -= dot * x[k].conjugate() * tau);
+                        }
+                    }
+                }
+            }
+        }
+
+        // todo!("divide and conquer to find svd");
+
+        Ok((u, m, v))
     }
 
     /// ## Column normalization
@@ -1408,13 +1556,10 @@ impl<T: Float, const C: usize> Matrix<C, C, T> {
     /// ```rust
     /// use seigyo::Matrix;
     ///
-    /// const PRECISION: f32 = 1e2;
+    /// const PRECISION: u32 = 2;
     ///
     /// let a = Matrix::from([[2., -1., 0.], [-1., 2., -1.], [0., -1., 2.]]);
-    /// let inverse = {
-    ///     let matrix = a.inverse().unwrap();
-    ///     (matrix * PRECISION).round() / PRECISION
-    /// };
+    /// let inverse = a.inverse().unwrap().round(2);
     ///
     /// assert_eq!(inverse, Matrix::from([[0.75, 0.5, 0.25], [0.5, 1., 0.5], [0.25, 0.5, 0.75]]))
     /// ```
@@ -1699,60 +1844,6 @@ pub mod statics {
         // }
     }
 
-    // impl<T: Float> From<&(Screw<T>, T)> for Transformation<T> {
-    //     /// ### Example 2
-    //     /// Rotation matrix is non zero. Theta here denotes the angle to be rotated about the axis.
-    //     /// 
-    //     /// **Note:** There is no need to check the validity of rotation matrix since angular component is of [Screw] is always normalized.
-    //     /// ```rust
-    //     /// use seigyo::{statics::{Transformation, Screw}, Matrix};
-    //     ///
-    //     /// let screw = Screw::new(
-    //     ///     Matrix::from([[0.], [1.], [0.]]),
-    //     ///     Matrix::from([[-0.089], [0.], [0.]]),
-    //     /// ).unwrap();
-    //     ///
-    //     /// let theta = -core::f32::consts::PI / 2.;
-    //     /// let transformation = Transformation::from(&(screw, theta));
-    //     ///
-    //     /// assert_eq!(transformation, Matrix::from([
-    //     ///     [0., 0., -1., 0.089],
-    //     ///     [0., 1., -0., 0.],
-    //     ///     [1., 0., -0., 0.089],
-    //     ///     [0., 0., -0., 0.],
-    //     /// ]));
-    //     /// ```
-    //     fn from((Screw { angular, linear }, theta): &(Screw<T>, T)) -> Self {
-    //         // no movement
-    //         let mut rotation = Matrix::new_identity();
-    //         // infinite pitch
-    //         let translation = if angular.is_zero() {
-    //             linear.to_owned() * theta
-    //         }
-    //         // finite pitch
-    //         else {
-    //             // the rotation matrix is obtained from rodrigurs formula while the complete matrix translation matrix is created using Chasles-Mozzi theorem.
-    //             // 1. calculate skew symmetric matrix
-    //             let skew_symmetric = angular.skew_symmetric();
-    //             let skew_symmetric_squared = &skew_symmetric * &skew_symmetric;
-
-    //             let one_minus_cos = Complex::from(T::one() - theta.cos());
-    //             let sin = theta.sin();
-
-    //             // 2. Rodrigues' formula
-    //             rotation += Complex::from(sin) * skew_symmetric.to_owned() + one_minus_cos * skew_symmetric_squared.to_owned();
-
-    //             // 3. Translation matrix
-    //             (Matrix::new_identity() * theta + one_minus_cos * skew_symmetric + Complex::from(*theta - sin) * skew_symmetric_squared) * linear
-    //         };
-
-    //         Self {
-    //             rotation,
-    //             translation,
-    //         }
-    //     }
-    // }
-
     impl<T: Float> TryFrom<Matrix<3, 3, T>> for Transformation<T> {
         type Error = Error;
 
@@ -1867,19 +1958,31 @@ pub mod statics {
         /// let t = Transformation::from(Matrix::from([[1.], [2.], [3.]]));
         /// assert_eq!(
         ///     format!("{t}"),
-        ///     "│\t1\t0\t0\t1\t│\n│\t0\t1\t0\t2\t│\n│\t0\t0\t1\t3\t│\n│\t0\t0\t0\t1\t│\n"
+        ///     "│ 1 0 0 1 │\n│ 0 1 0 2 │\n│ 0 0 1 3 │\n│ 0 0 0 1 │\n"
         /// );
         /// ```
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            for i in 0..3 {
-                write!(f, "│\t")?;
-                for j in 0..3 {
-                    write!(f, "{}\t", self.rotation[i][j])?;
+            let strings: [[String; 4]; 4] = core::array::from_fn(|i| {
+                core::array::from_fn(|j| {
+                    if i < 3 {
+                        if j < 3 { format!("{}", self.rotation[i][j]) }
+                        else { format!("{}", self.translation[i][0]) }
+                    }
+                    else if j < 3 { format!("{}", T::zero()) }
+                    else { format!("{}", T::one()) }
+                })
+            });
+            let col_widths: [usize; 4] = core::array::from_fn(|j| {
+                (0..4).map(|i| strings[i][j].len()).max().unwrap_or(0)
+            });
+            for s in strings.iter().take(4) {
+                write!(f, "│")?;
+                for j in 0..4 {
+                    write!(f, " {:>width$}", s[j], width = col_widths[j])?;
                 }
-                writeln!(f, "{}\t│", self.translation[i][0])?;
+                writeln!(f, " │")?;
             }
-
-            writeln!(f, "│\t{0}\t{0}\t{0}\t{1}\t│", T::zero(), T::one())
+            Ok(())
         }
     }
 
@@ -2280,8 +2383,9 @@ pub mod statics {
     }
 
     /// Trait implements forward and backward kinematics for manipulator arms.
-    pub trait KinematicsChain<const N: usize, T: Float = f32> {
-        /// Forward kinematics in bosy frame.
+    pub trait KinematicsChain<const N: usize, T: Float = f64> {
+        /// ## Forward kinematics in body frame.
+        /// - **m** represents the end-effector configuration, when root is at home position.
         /// 
         /// **Reference:** Example 4.7 from Modern Robotics
         /// ```rust
@@ -2290,7 +2394,7 @@ pub mod statics {
         ///
         /// struct Manipulator;
         ///
-        /// impl KinematicsChain<7> for Manipulator{}
+        /// impl KinematicsChain<7, f32> for Manipulator{}
         ///
         /// let m = Transformation::try_from(Matrix::from([
         ///     [1., 0., 0., 0.],
@@ -2311,7 +2415,8 @@ pub mod statics {
         ///
         /// let theta_list = [ 0., PI / 4., 0., -PI / 4., 0., -PI / 2., 0. ];
         ///
-        /// let fk = Manipulator::fk_body(m, b_list, theta_list);
+        /// let manipulator = Manipulator;
+        /// let fk = manipulator.fk_body(m, b_list, theta_list);
         ///
         /// assert_eq!(fk,
         ///     Matrix::from([
@@ -2322,7 +2427,7 @@ pub mod statics {
         ///     )
         /// );
         /// ```
-        fn fk_body(m: Transformation<T>, b_list: [Screw<T>; N], theta_list: [T; N]) -> Transformation<T> {
+        fn fk_body(&self, m: Transformation<T>, b_list: [Screw<T>; N], theta_list: [T; N]) -> Transformation<T> {
             b_list.into_iter().zip(theta_list).fold(m, |acc, (b_frame, theta)| acc * b_frame.exp(theta))
         }
         
@@ -2333,7 +2438,7 @@ pub mod statics {
         ///
         /// struct Manipulator;
         ///
-        /// impl KinematicsChain<6> for Manipulator {}
+        /// impl KinematicsChain<6, f32> for Manipulator {}
         /// 
         /// let m = Transformation::try_from(Matrix::from([
         ///     [-1., 0., 0., 0.425 + 0.392],
@@ -2353,7 +2458,8 @@ pub mod statics {
         ///
         /// let theta_list = [ 0., -PI / 2., 0., 0., PI / 2., 0. ];
         ///
-        /// let fk = Manipulator::fk_space(m, s_list, theta_list);
+        /// let manipulator = Manipulator;
+        /// let fk = manipulator.fk_space(m, s_list, theta_list);
         ///
         /// assert_eq!(
         ///     fk,
@@ -2365,8 +2471,8 @@ pub mod statics {
         ///     ])
         /// );
         /// ```
-        fn fk_space(m: Transformation<T>, s_list: [Screw<T>; N], theta_list: [T; N]) -> Transformation<T> {
-            s_list.into_iter().zip(theta_list).fold(m, |acc, (s_frame, theta)| s_frame.exp(theta) * acc)
+        fn fk_space(&self, m: Transformation<T>, s_list: [Screw<T>; N], theta_list: [T; N]) -> Transformation<T> {
+            s_list.into_iter().zip(theta_list).rev().fold(m, |acc, (s_frame, theta)| s_frame.exp(theta) * acc)
         }
 
         fn j_body(s_list: [Screw<T>; N], theta_list: [T; N]) -> Matrix<6, N> {

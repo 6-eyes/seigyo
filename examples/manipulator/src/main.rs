@@ -7,6 +7,7 @@ async fn main() {
 
 mod manipulator {
     use std::process::exit;
+    use seigyo::{Matrix, statics::{KinematicsChain, Screw, Transformation}};
     use time::Clock;
     use config::Config;
     use gz::{msgs::double::Double, transport::{Node, Publisher}};
@@ -38,18 +39,50 @@ mod manipulator {
         };
 
         // create manipulator
-        let mut manipulator = Manipulator::<2>::init(&mut node, &clock).await.unwrap_or_else(|e| {
+        let mut manipulator = Manipulator::<3>::init([0.; 3], &mut node, &clock).await.unwrap_or_else(|e| {
             log::error!("unable to initialize manipulator: {e}");
             exit(4);
         });
 
-        manipulator.set_joint_angles(&[ 0., std::f64::consts::FRAC_PI_2]).await.unwrap_or_else(|e| {
+        // joint angles
+        let theta_list = [ 0., 0., 0. ];
+
+        log_fk_space(&manipulator, &theta_list);
+
+        manipulator.set_joint_angles(&theta_list).await.unwrap_or_else(|e| {
             log::error!("unable to run manipulator: {e}");
             exit(5);
         });
     }
 
+
+    fn log_fk_space(manipulator: &Manipulator<3>, theta_list: &[f64; 3]) {
+        let m = Transformation::try_from(Matrix::from([
+            [1., 0., 0., -0.15],
+            [0., 0., 1., 0.02],
+            [0., -1., 0., 0.244],
+            [0., 0., 0., 1.],
+        ])).expect("invalid transformation matrix");
+
+        // v = -omega x q
+        let s_list = [
+            // omega = [0, 0, 1]
+            // q = [0, 0, 0.084]
+            // v = [0, 0, 0]
+            Screw::try_from(Matrix::from([[0.], [0.], [1.], [0.], [0.], [0.]])).expect("invalid screw matrix"),
+            // omega = [0, 1, 0]
+            // q = [-0.15, 0.02, 0.084 + 0.16] = [-0.15, 0.02, 0.244]
+            // v = -0.244i - 0.15k = [-0.244, 0, -0.15]
+            Screw::try_from(Matrix::from([[0.], [1.], [0.], [-0.244], [0.], [-0.15]])).expect("invalid screw matrix"),
+            Screw::try_from(Matrix::from([[0.], [1.], [0.], [-0.244], [0.], [-0.15]])).expect("invalid screw matrix"),
+        ];
+
+        let t = manipulator.fk_space(m, s_list, *theta_list);
+        log::info!("fk:\n{t}\n");
+    }
+
     struct Manipulator<'cl, const N: usize> {
+        state: [f64; N],
         joints: [Publisher<Double>; N],
         clock: &'cl Clock,
     }
@@ -59,7 +92,7 @@ mod manipulator {
         /// Subscribes to joint topics. The prefix for the 
         /// 
         /// **Note:** This method blocks the thread for 100ms, waiting for the zmq bus to initialize. If this is not done, the first immediate message is skipped.
-        async fn init(node: &mut Node, clock: &'cl Clock) -> Result<Self, Error> {
+        async fn init(initial_state: [f64; N],node: &mut Node, clock: &'cl Clock) -> Result<Self, Error> {
             /// The prefix for joint topic
             const JOINT_TOPIC_PREFIX: &str = "/manipulator/joint";
 
@@ -79,7 +112,7 @@ mod manipulator {
             // wait for the simulation to start
             clock.wait_active().await;
 
-            Ok(Self { joints: maybe_joints.map(Option::unwrap), clock })
+            Ok(Self { state: initial_state, joints: maybe_joints.map(Option::unwrap), clock })
         }
 
         /// ## Move joints
@@ -88,7 +121,7 @@ mod manipulator {
         /// **Note:** This method blocks the thread until all the joints are placed in the desired position
         async fn set_joint_angles(&mut self, theta_array: &[f64; N]) -> Result<(), Error> {
             log::debug!("setting joint angles: {theta_array:?}");
-            const TIME_MILLIS: u64 = 8000;
+            const TIME_MILLIS: u64 = 1000;
 
             let vel_array = theta_array.map(|v| v * 1000. / TIME_MILLIS as f64);
             // start
@@ -99,6 +132,9 @@ mod manipulator {
 
             // stop
             self.set_joint_speeds(&[0.; N])?;
+
+            // update joint angles
+            self.state = *theta_array;
 
             Ok(())
         }
@@ -199,7 +235,7 @@ mod manipulator {
             /// For [`Clock::SystemClock`] this returns immediately.
             ///
             /// For [`Clock::SimClock`] it blocks until simulation is playing (sim time > 0).
-            pub async fn wait_active(&self) {
+            pub(super) async fn wait_active(&self) {
                 if let Self::SimClock(rx) = self {
                     if rx.borrow().to_nanos() > 0 { return; }
                     let mut rx = rx.clone();
@@ -210,7 +246,9 @@ mod manipulator {
                             Ok(Ok(_)) => {
                                 if rx.borrow().to_nanos() > 0 { break; }
                                 log::warn!("simulation not initiated yet. will check in {SIM_WAIT_TIMEOUT} ms");
+
                                 sleep(duration).await;
+                                // mark the latest value seen
                                 rx.borrow_and_update();
                             }
                             Ok(Err(_)) => {
