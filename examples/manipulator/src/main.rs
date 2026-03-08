@@ -39,13 +39,18 @@ mod manipulator {
         };
 
         // create manipulator
-        let mut manipulator = Manipulator::<3>::init([0.; 3], &mut node, &clock).await.unwrap_or_else(|e| {
+        let mut manipulator = Manipulator::<4>::init([0.; 4], &mut node, &clock).await.unwrap_or_else(|e| {
             log::error!("unable to initialize manipulator: {e}");
             exit(4);
         });
 
         // joint angles
-        let theta_list = [ 0., 0., 0. ];
+        let theta_list = [
+            0.,
+            0.,
+            0.,
+            core::f64::consts::FRAC_PI_2,
+        ];
 
         log_fk_space(&manipulator, &theta_list);
 
@@ -56,25 +61,39 @@ mod manipulator {
     }
 
 
-    fn log_fk_space(manipulator: &Manipulator<3>, theta_list: &[f64; 3]) {
-        let m = Transformation::try_from(Matrix::from([
-            [1., 0., 0., -0.15],
-            [0., 0., 1., 0.02],
-            [0., -1., 0., 0.244],
-            [0., 0., 0., 1.],
-        ])).expect("invalid transformation matrix");
+    fn log_fk_space(manipulator: &Manipulator<4>, theta_list: &[f64; 4]) {
+        let rotation = Matrix::from([
+            [0., 0., -1.],
+            [1., 0., 0.],
+            [0., -1., 0.],
+        ]);
+        
+        let translation = Matrix::from([
+           [- 0.15 - 0.295 - 0.221],
+           [0.02 - 0.048],
+           [0.244 + 0.045],
+        ]);
 
-        // v = -omega x q
+        let m = Transformation::new(rotation, translation).unwrap_or_else(|e| {
+            log::error!("unable to create transformation matrix: {e}");
+            exit(6);
+        });
+
+        log::debug!("m:\n{m}");
+
         let s_list = [
             // omega = [0, 0, 1]
             // q = [0, 0, 0.084]
-            // v = [0, 0, 0]
-            Screw::try_from(Matrix::from([[0.], [0.], [1.], [0.], [0.], [0.]])).expect("invalid screw matrix"),
+            Screw::new_revolute(Matrix::from([[0.], [0.], [1.]]), Matrix::from([[0.], [0.], [0.084]])).expect("invalid screw marix"),
             // omega = [0, 1, 0]
             // q = [-0.15, 0.02, 0.084 + 0.16] = [-0.15, 0.02, 0.244]
-            // v = -0.244i - 0.15k = [-0.244, 0, -0.15]
-            Screw::try_from(Matrix::from([[0.], [1.], [0.], [-0.244], [0.], [-0.15]])).expect("invalid screw matrix"),
-            Screw::try_from(Matrix::from([[0.], [1.], [0.], [-0.244], [0.], [-0.15]])).expect("invalid screw matrix"),
+            Screw::new_revolute(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[-0.15], [0.02], [0.084 + 0.16]])).expect("invalid screw marix"),
+            // omega = [0, 1, 0]
+            // q = [-0.15-0.295, 0.02, 0.084 + 0.16] = [-0.445, 0.02, 0.244]
+            Screw::new_revolute(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[-0.15-0.295], [0.02], [0.084 + 0.16]])).expect("invalid screw marix"),
+            // omega = [0, 1, 1]
+            // q = [-0.15-]
+            Screw::new_revolute(Matrix::from([[-1.], [0.], [0.]]), Matrix::from([[- 0.15- 0.295 - 0.221], [0.02 - 0.048], [0.084 + 0.16 + 0.045]])).expect("invalid screw marix"),
         ];
 
         let t = manipulator.fk_space(m, s_list, *theta_list);

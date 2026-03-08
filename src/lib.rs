@@ -222,7 +222,7 @@ impl<T: Float> Complex<T> {
     /// Returns the argument of the complex number
     /// ```rust
     /// use seigyo::Complex;
-    /// use std::f32::consts::PI;
+    /// use core::f32::consts::PI;
     /// 
     /// let complex = Complex::from((1., 1.));
     /// assert_eq!(complex.arg(), PI / 4.);
@@ -323,6 +323,19 @@ impl<T: Float> Complex<T> {
     #[inline(always)]
     pub fn is_zero(&self) -> bool {
         self.is_imaginary() && self.is_real()
+    }
+
+    /// ### Is one
+    /// Returns `true` if the complex number equals `1 + 0i` within tolerance
+    /// ```rust
+    /// use seigyo::Complex;
+    ///
+    /// let complex = Complex::from(1.);
+    /// assert_eq!(complex.is_one(), true);
+    /// ```
+    #[inline(always)]
+    pub fn is_one(&self) -> bool {
+        self.is_real() && (self.0 - T::one()).abs() < T::tolerance()
     }
 
     /// ### Dot product
@@ -658,7 +671,7 @@ impl<T: Float> From<(T, T)> for Complex<T> {
 
 
 /// ### Display
-impl<T: Float> std::fmt::Display for Complex<T> {
+impl<T: Float> core::fmt::Display for Complex<T> {
     /// ```rust
     /// use seigyo::Complex;
     ///
@@ -685,7 +698,7 @@ impl<T: Float> std::fmt::Display for Complex<T> {
     /// complex = Complex::from((1.33, 20.55));
     /// assert_eq!(complex.to_string(), "1.33 + 20.55j".to_string());
     /// ```
-   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
         if self.0 == T::zero() {
             write!(f, "{}", if self.1 == T::zero() { "0".to_string() } else { format!("{}j", self.1) })?;
         }
@@ -712,7 +725,7 @@ pub enum MatrixError {
     Singular,
 }
 
-impl std::fmt::Display for MatrixError {
+impl core::fmt::Display for MatrixError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Singular => write!(f, "Matrix is singular"),
@@ -720,7 +733,7 @@ impl std::fmt::Display for MatrixError {
     }
 }
 
-impl std::error::Error for MatrixError {}
+impl core::error::Error for MatrixError {}
 
 /// Defines a matrix
 #[derive(Debug, PartialEq, Clone)]
@@ -887,8 +900,8 @@ impl<T: Float, const R: usize, const C: usize, const O: usize> core::ops::Mul<&M
     /// assert_eq!(&a * &b, Matrix::from([[56., 36.], [34., 76.], [100., 166.], [146., 121.]]));
     /// ```
     fn mul(self, rhs: &Matrix<C, O, T>) -> Self::Output {
-        let matrix = std::array::from_fn(|i| // self row
-            std::array::from_fn(|j| // rhs column
+        let matrix = core::array::from_fn(|i| // self row
+            core::array::from_fn(|j| // rhs column
                 (0..C).map(|k| self.0[i][k] * rhs.0[k][j]).sum::<Complex<T>>()
             )
         );
@@ -930,8 +943,8 @@ impl<T: Float, const C: usize> core::ops::MulAssign for Matrix<C, C, T> {
     /// ```
     #[inline]
     fn mul_assign(&mut self, rhs: Self) {
-        let matrix = std::array::from_fn(|i| // row in self
-            std::array::from_fn(|j| // col in rhs
+        let matrix = core::array::from_fn(|i| // row in self
+            core::array::from_fn(|j| // col in rhs
                 (0..C).map(|k| self.0[i][k] * rhs.0[k][j]).sum::<Complex<T>>()
             )
         );
@@ -1162,9 +1175,10 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
     }
 
     /// ## QR Decomposition
-    /// Decomposes the given matrix into two matrices using QR decomposition.
-    /// The first matrix Q is a **Unitary matrix**. Meaning, it's conjugate transpose is equal to it's inverse.$$Q^{\dagger} = Q^{-1}$$
-    /// The QR decomposition performed here uses Householder reflections because it is more numerically stable than gaussian eliminations.
+    /// - Decomposes the given matrix into two matrices using QR decomposition.
+    /// - The first matrix Q is a **Unitary matrix**. Meaning, it's conjugate transpose is equal to it's inverse.$$Q^{\dagger} = Q^{-1}$$
+    /// - The QR decomposition performed here uses Householder reflections because it is more numerically stable than gaussian eliminations.
+    /// - Takes the ownership of the matrix decomposing it into corresponding Q and R matrices.
     /// 
     /// Let there be a matrix $A_{R \times C}$.
     /// $$A_{R \times C} = Q_{R \times C} R_{C \times C}$$
@@ -1207,10 +1221,10 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
     /// let a = Matrix::from([[3., 3.], [1., 1.]]);
     /// a.qr().unwrap();
     /// ```
-    pub fn qr(&self) -> Result<(Matrix<R, R, T>, Matrix<R, C, T>), MatrixError> {
+    pub fn qr(self) -> Result<(Matrix<R, R, T>, Matrix<R, C, T>), MatrixError> {
         // todo: for m < n
         let mut q = Matrix::new_identity();
-        let mut r = self.to_owned();
+        let mut r = self;
 
         let two = T::one() + T::one();
 
@@ -1281,15 +1295,18 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
     /// let (u, m, v) = {
     ///     let (u, m, v) = a.svd().unwrap();
     ///     let v_t = v.clone().conjugate_transpose();
+    ///     assert!(u.is_orthogonal(), "u not orthogonal");
+    ///     assert!(v.is_orthogonal(), "v not orthogonal");
+    /// 
     ///     println!("product:\n{}", &u * &m * v_t);
     ///     (u.round(2), m.round(2), v.round(2))
     /// };
     ///
     /// todo!("not yet implemented")
     /// ```
-    pub fn svd(&self) -> Result<(Matrix<R, R, T>, Matrix<R, C, T>, Matrix<C, C, T>), MatrixError> {
+    pub fn svd(self) -> Result<(Matrix<R, R, T>, Matrix<R, C, T>, Matrix<C, C, T>), MatrixError> {
         let mut u = Matrix::new_identity();
-        let mut m = self.to_owned();
+        let mut m = self;
         let mut v = Matrix::new_identity();
 
         let two = T::one() + T::one();
@@ -1376,7 +1393,16 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
             }
         }
 
-        // todo!("divide and conquer to find svd");
+        // https://medium.com/gaussian-machine/implementing-svd-algorithm-in-rust-ac1489eb7ca4
+        loop {
+            let q = (1..C).rev().find(|&i| m[i][i + 1].magnitude() > T::zero()).unwrap_or_default();
+            
+            if q == 0 {
+                break;
+            }
+        }
+
+        todo!("givens rotation");
 
         Ok((u, m, v))
     }
@@ -1409,6 +1435,63 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
             (0..R).map(|r| self.0[r][c].norm_squared()).sum::<T>().sqrt() // sum all elements in the row
         ).all(|sum| (sum - T::one()).abs() <= T::tolerance())
     }
+
+
+    /// Method to determine whether the columns of the matrix are orthogonal or not.
+    ///
+    /// For tall matrices (R > C), the following condition is checked:$$A^TA = I$$
+    /// 
+    /// For fat matrices (C > R), the following condition is checked:$$AA^T = I$$
+    /// ### Example
+    /// 1. Orthogonal matrix
+    /// ```rust
+    /// use seigyo::Matrix;
+    ///
+    /// let a = Matrix::from([
+    ///     [3., -6., 2.],
+    ///     [2., 3., 6.],
+    ///     [6., 2., -3.],
+    /// ]) / 7.;
+    ///
+    /// assert!(a.is_orthogonal(), "matrix not orthogonal");
+    /// ```
+    /// 2. Non-orthogonal matrix (Fat)
+    /// ```rust
+    /// use seigyo::Matrix;
+    ///
+    /// let a = Matrix::from([
+    ///     [-4.4882, 2.8336, -0.2785, 1.9537, -2.2951],
+    ///     [-1.8932, -0.3416, 0.2267, -3.1572, 0.6278],
+    ///     [-2.9985, -2.0746, 2.012, -0.6371, 2.4282],
+    ///     [-1.8012, -1.7131, -1.0254, -3.9112, 3.3598],
+    /// ]);
+    ///
+    /// assert!(!a.is_orthogonal(), "matrix is orthogonal");
+    /// ```
+    /// 3. Non-orthogonal matrix (Tall)
+    /// ```rust
+    /// use seigyo::Matrix;
+    ///
+    /// let a = Matrix::from([
+    ///     [8.0594, -2.5606, -3.094],
+    ///     [14.0597, 13.5206, 3.4394],
+    ///     [7.8801, 8.0084, 11.4464],
+    ///     [6.8671, 13.1027, 11.2753],
+    ///     [-1.7049, -3.6269, -3.3591],
+    /// ]);
+    ///
+    /// assert!(!a.is_orthogonal(), "matrix is orthogonal");
+    /// ```
+    pub fn is_orthogonal(&self) -> bool {
+        (C > R && (self * self.transpose()).is_identity())
+            || 
+        ((self.transpose() * self).is_identity())
+    }
+
+    #[inline]
+    fn is_identity(&self) -> bool {
+        self.iter().enumerate().all(|(r, row)| row.iter().enumerate().all(|(c, val)| (r == c && val.is_one()) || (r != c && val.is_zero())))
+    }
 }
 
 impl<T: Float, const C: usize> Matrix<C, C, T> {
@@ -1421,12 +1504,10 @@ impl<T: Float, const C: usize> Matrix<C, C, T> {
     /// ```
     pub fn new_identity() -> Self {
         assert_ne!(C, 0, "Cannot create a matrix with no dimensions");
-        Self(std::array::from_fn(|i| 
-                std::array::from_fn(|j| match j == i {
-                    true => T::one(),
-                    false => T::zero(),
-                }.into())
-        ))
+        Self(core::array::from_fn(|i| core::array::from_fn(|j| match j == i {
+            true => T::one(),
+            false => T::zero(),
+        }.into())))
     }
 
     /// ## Trace
@@ -1471,7 +1552,7 @@ impl<T: Float, const C: usize> Matrix<C, C, T> {
             }
 
             // transform every row below diag_row
-            let temp: [Complex<T>; C] = std::array::from_fn(|j| matrix[diag_row][j]);
+            let temp: [Complex<T>; C] = core::array::from_fn(|j| matrix[diag_row][j]);
             for row in matrix.iter_mut().skip(diag_row + 1) {
                 let num2 = row[diag_row];
                 row.iter_mut().zip(temp).for_each(|(k, ele)| *k = (temp[diag_row] * *k) - (num2 * ele));
@@ -1610,6 +1691,34 @@ impl<T: Float, const C: usize> Matrix<C, C, T> {
 }
 
 impl<T: Float> Matrix<3, 1, T> {
+    /// ## Cross product
+    /// Returns the cross product of two 3D column vectors.
+    ///
+    /// For vectors `a` and `b`, computes `a × b`:
+    /// ```text
+    /// | i   j   k  |
+    /// | a0  a1  a2 |
+    /// | b0  b1  b2 |
+    /// ```
+    /// ### Example
+    /// ```rust
+    /// use seigyo::Matrix;
+    ///
+    /// let a = Matrix::from([[1.], [0.], [0.]]);
+    /// let b = Matrix::from([[0.], [1.], [0.]]);
+    /// assert_eq!(a.cross(b), Matrix::from([[0.], [0.], [1.]]));
+    /// ```
+    pub fn cross(&self, other: Self) -> Self {
+        let [a0, a1, a2] = [self[0][0], self[1][0], self[2][0]];
+        let [b0, b1, b2] = [other[0][0], other[1][0], other[2][0]];
+        Matrix::from([
+            [a1 * b2 - a2 * b1],
+            [a2 * b0 - a0 * b2],
+            [a0 * b1 - a1 * b0],
+        ])
+    }
+
+    /// ## Skew Symmetric
     /// Method to make skew symmetric of a 3x1 matrix
     fn skew_symmetric(&self) -> Matrix<3, 3, T> {
         let zero = T::zero().into();
@@ -1773,6 +1882,19 @@ pub mod statics {
     }
 
     impl<T: Float> Transformation<T> {
+        /// ### New transformation matrix
+        /// Creates a new transformation matrix.
+        ///
+        /// Returns [`Error`] in case the rotation matrix is invalid.
+        pub fn new(rotation: Matrix<3, 3, T>, translation: Matrix<3, 1, T>) -> Result<Self> {
+            Self::validate_rotation(&rotation)?;
+
+            Ok(Self {
+                rotation,
+                translation,
+            })
+        }
+
         /// ### Transformation inverse
         /// Method to find inverse of the transformation matrix
         /// $$T^{-1} = \begin{bmatrix} R & p \\ 0 & 1 \end{bmatrix}^{-1} = \begin{bmatrix} R^T & -R^Tp \\ 0 & 1\end{bmatrix}$$
@@ -1822,7 +1944,6 @@ pub mod statics {
             Ok(())
         }
 
-
         /// ### Transformation adjoint
         /// Returns the 6x6 adjoint matrix for the transformation matrix
         pub fn adjoint(&self) -> Matrix<6, 6, T> {
@@ -1838,10 +1959,6 @@ pub mod statics {
                 [one_zero[2][0], one_zero[2][1], one_zero[2][2], self.rotation[2][0], self.rotation[2][1], self.rotation[2][2]],
             ])
         }
-
-        // pub fn from_axis_and_angle(screw: Screw<T>, theta: T) -> Self {
-        //     (&(screw, theta)).into()
-        // }
     }
 
     impl<T: Float> TryFrom<Matrix<3, 3, T>> for Transformation<T> {
@@ -1883,23 +2000,6 @@ pub mod statics {
                 [value[2][3]],
             ]);
 
-
-            Ok(Self {
-                rotation,
-                translation,
-            })
-        }
-    }
-
-    impl<T: Float> TryFrom<(Matrix<3, 3, T>, Matrix<3, 1, T>)> for Transformation<T> {
-        type Error = Error;
-
-        /// Transformation matrix from a tuple containing a 3x3 rotation matrix and a 3x1 translation matrix.
-        /// ```rust
-        /// todo!("add test cases")
-        /// ```
-        fn try_from((rotation, translation): (Matrix<3, 3, T>, Matrix<3, 1, T>)) -> core::result::Result<Self, Self::Error> {
-            Self::validate_rotation(&rotation)?;
 
             Ok(Self {
                 rotation,
@@ -1961,7 +2061,7 @@ pub mod statics {
         ///     "│ 1 0 0 1 │\n│ 0 1 0 2 │\n│ 0 0 1 3 │\n│ 0 0 0 1 │\n"
         /// );
         /// ```
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             let strings: [[String; 4]; 4] = core::array::from_fn(|i| {
                 core::array::from_fn(|j| {
                     if i < 3 {
@@ -2044,7 +2144,7 @@ pub mod statics {
         ///
         /// assert_eq!(Twist::from(matrix).to_string(), "│\t0\t│\n│\t0\t│\n│\t-2\t│\n│\t2.8\t│\n│\t4\t│\n│\t0\t│\n");
         /// ```
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             for i in 0..3 {
                 writeln!(f, "│\t{}\t│", self.angular[i][0])?;
             }
@@ -2262,8 +2362,7 @@ pub mod statics {
         /// ```
         pub fn new(angular: Matrix<3, 1, T>, linear: Matrix<3, 1, T>) -> Result<Self> {
             // linear component only needs to be normal when the Screw represents a translation motion (angular component is zero).
-            let is_translation = angular.is_zero();
-            let (axis_to_check, error) = if is_translation {
+            let (axis_to_check, error) = if angular.is_zero() {
                 (&linear, ScrewError::TranslationAxisNotNormal)
             }
             else {
@@ -2275,6 +2374,19 @@ pub mod statics {
             }
             else {
                 Err(error.into())
+            }
+        }
+
+        /// Creates a new screw representing revolute joint given the normalized axis and a point on the axis.
+        ///
+        /// $$v = -\omega \times q$$
+        pub fn new_revolute(angular: Matrix<3, 1, T>, point: Matrix<3, 1, T>) -> Result<Self> {
+            if angular.has_normal_columns() {
+                let linear = - angular.cross(point);
+                Ok(Self { angular, linear })
+            }
+            else {
+                Err(ScrewError::RotationAxisNotNormal.into())
             }
         }
 
@@ -2543,7 +2655,7 @@ pub mod statics {
     }
 
     impl Display for ScrewError {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match self {
                 Self::RotationAxisNotNormal => write!(f, "screw axis should be normalized"),
                 Self::TranslationAxisNotNormal => write!(f, "translation vector should be normal if there is no rotation (theta defines the magnitude of translation).")

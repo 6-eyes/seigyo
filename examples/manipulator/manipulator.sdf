@@ -263,7 +263,7 @@
 
              <!-- joint 3 -->
              <joint name="joint3" type="revolute">
-                <pose relative_to="link3">0 0.045 0.05 0 0 0</pose>
+                <pose relative_to="link3">0.048 0.045 0.05 0 0 0</pose>
                 <parent>link2</parent>
                 <child>link3</child>
                 <axis>
@@ -281,7 +281,7 @@
 
              <!-- joint 4 -->
              <joint name="joint4" type="revolute">
-                <pose relative_to="link4">0 0 0 0 0 0</pose>
+                <pose relative_to="link4">0 0 0 3.14159265359 0 0</pose>
                 <parent>link3</parent>
                 <child>link4</child>
                 <axis>
