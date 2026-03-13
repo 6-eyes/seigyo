@@ -15,6 +15,8 @@ pub trait Float:
     + PartialEq
     + Copy
     + Sized
+    // compare to real complex numbers
+    + PartialEq<Complex<Self>>
 {
     /// abstracting square root from floating types
     fn sqrt(self) -> Self;
@@ -116,6 +118,16 @@ impl Float for f32 {
     fn cos(self) -> Self {
         self.cos()
     }
+
+    #[inline(always)]
+    fn min(self, other: Self) -> Self {
+        if self > other { other } else { self }
+    }
+
+    #[inline(always)]
+    fn max(self, other: Self) -> Self {
+        if self < other { other } else { self }
+    }
 }
 
 impl Float for f64 {
@@ -176,6 +188,7 @@ impl Float for f64 {
     }
 }
 
+/// Defines a complex number
 #[derive(Debug, Clone, Copy)]
 pub struct Complex<T: Float = f64>(T, T);
 
@@ -325,16 +338,8 @@ impl<T: Float> Complex<T> {
         self.is_imaginary() && self.is_real()
     }
 
-    /// ### Is one
-    /// Returns `true` if the complex number equals `1 + 0i` within tolerance
-    /// ```rust
-    /// use seigyo::Complex;
-    ///
-    /// let complex = Complex::from(1.);
-    /// assert_eq!(complex.is_one(), true);
-    /// ```
     #[inline(always)]
-    pub fn is_one(&self) -> bool {
+    fn is_one(&self) -> bool {
         self.is_real() && (self.0 - T::one()).abs() < T::tolerance()
     }
 
@@ -720,6 +725,60 @@ impl<T: Float> PartialEq for Complex<T> {
     }
 }
 
+impl<T: Float> PartialEq<T> for Complex<T> {
+    /// Compares a complex number to a floating real number which implements [`Float`]
+    /// ```rust, should_panic
+    /// use seigyo::Complex;
+    ///
+    /// let complex = Complex::new(16., 1.);
+    /// assert_eq!(complex, 1.);
+    /// ```
+    ///
+    /// ```rust
+    /// use seigyo::Complex;
+    ///
+    /// let complex = Complex::from(16.);
+    /// assert_eq!(complex, 16.);
+    /// ```
+    fn eq(&self, other: &T) -> bool {
+        self.is_real() && self.0.eq(other)
+    }
+}
+
+impl PartialEq<Complex<f32>> for f32 {
+    /// ```rust
+    /// use seigyo::Complex;
+    ///
+    /// assert_eq!(1.25f32, Complex::new(1.25, 0.));
+    /// ```
+    ///
+    /// ```rust, should_panic
+    /// use seigyo::Complex;
+    ///
+    /// assert_eq!(1.25f32, Complex::new(1.25, 0.01));
+    /// ```
+    fn eq(&self, other: &Complex<f32>) -> bool {
+        other.is_real() && self.eq(&other.0)
+    }
+}
+
+impl PartialEq<Complex<f64>> for f64 {
+    /// ```rust
+    /// use seigyo::Complex;
+    ///
+    /// assert_eq!(1.25f64, Complex::new(1.25, 0.));
+    /// ```
+    /// 
+    /// ```rust, should_panic
+    /// use seigyo::Complex;
+    ///
+    /// assert_eq!(1.25f64, Complex::new(1.25, 0.01));
+    /// ```
+    fn eq(&self, other: &Complex) -> bool {
+        other.is_real() && self.eq(&other.0)
+    }
+}
+
 #[derive(Debug)]
 pub enum MatrixError {
     Singular,
@@ -781,12 +840,10 @@ impl<T: Float, const R: usize, const C: usize> core::fmt::Display for Matrix<R, 
     /// assert_eq!("│  10  0  20 │\n│   0 30   0 │\n│ 200  0 100 │\n", matrix.to_string());
     /// ```
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let strings: [[String; C]; R] = core::array::from_fn(|i| {
-            core::array::from_fn(|j| format!("{}", self.0[i][j]))
-        });
-        let col_widths: [usize; C] = core::array::from_fn(|j| {
-            (0..R).map(|i| strings[i][j].len()).max().unwrap_or(0)
-        });
+        // caution: format macro creates heap allocated memory
+        let strings: [[String; C]; R] = core::array::from_fn(|i| core::array::from_fn(|j| format!("{}", self.0[i][j])));
+        let col_widths: [usize; C] = core::array::from_fn(|j| (0..R).map(|i| strings[i][j].len()).max().unwrap_or(0));
+
         for s in strings.iter().take(R) {
             write!(f, "│")?;
             for j in 0..C {
@@ -794,6 +851,7 @@ impl<T: Float, const R: usize, const C: usize> core::fmt::Display for Matrix<R, 
             }
             writeln!(f, " │")?;
         }
+
         Ok(())
     }
 }
@@ -1488,6 +1546,9 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
         ((self.transpose() * self).is_identity())
     }
 
+    /// Checks if a matrix represents identity matrix or not.
+    ///
+    /// The values are checked against the Tolerence specified for the [`Float`] type.
     #[inline]
     fn is_identity(&self) -> bool {
         self.iter().enumerate().all(|(r, row)| row.iter().enumerate().all(|(c, val)| (r == c && val.is_one()) || (r != c && val.is_zero())))
@@ -1720,7 +1781,7 @@ impl<T: Float> Matrix<3, 1, T> {
 
     /// ## Skew Symmetric
     /// Method to make skew symmetric of a 3x1 matrix
-    fn skew_symmetric(&self) -> Matrix<3, 3, T> {
+    fn skew_symmetric(self) -> Matrix<3, 3, T> {
         let zero = T::zero().into();
         Matrix::from([
             [zero, -self[2][0], self[1][0]],
@@ -1767,7 +1828,7 @@ pub mod statics {
     /// - To represent configuration of a rigid body with respect to a fixed frame represented by [`Transformation::default()`].
     /// - To change the reference frame in which a vector or frame is represented.
     /// - To displace a vector or frame.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Transformation<T: Float> {
         /// the 3x3 rotation matrix
         rotation: Matrix<3, 3, T>,
@@ -1946,7 +2007,33 @@ pub mod statics {
 
         /// ### Transformation adjoint
         /// Returns the 6x6 adjoint matrix for the transformation matrix
-        pub fn adjoint(&self) -> Matrix<6, 6, T> {
+        /// ```rust
+        /// use seigyo::{Matrix, statics::Transformation};
+        /// 
+        /// let m = Matrix::from([
+        ///     [0., 0., 1., 300.],
+        ///     [0., 1., 0., 100.],
+        ///     [1., 0., 0., 120.],
+        ///     [0., 0., 0., 1.],
+        /// ]);
+        ///
+        /// let transformation = Transformation::try_from(m).expect("invalid matrix");
+        ///
+        /// let adjoint = transformation.to_adjoint();
+        ///
+        /// assert_eq!(adjoint, Matrix::from([
+        ///     [0., 0., 1., 0., 0., 0.],
+        ///     [0., 1., 0., 0., 0., 0.],
+        ///     [1., 0., 0., 0., 0., 0.],
+        ///     [100., -120., 0., 0., 0., 1.],
+        ///     [-300., 0., 120., 0., 1., 0.],
+        ///     [0., 300., -100., 1., 0., 0.],
+        /// ]));
+        ///
+        /// // adjoints have determinant 1
+        /// assert_eq!(adjoint.determinant(), 1., "adjoint should always have determinant one");
+        /// ```
+        pub fn to_adjoint(self) -> Matrix<6, 6, T> {
             let one_zero = self.translation.skew_symmetric() * &self.rotation;
             let zero = T::zero().into();
 
@@ -2036,6 +2123,22 @@ pub mod statics {
         }
     }
 
+    impl<T: Float> From<Transformation<T>> for Matrix<4, 4, T> {
+        fn from(value: Transformation<T>) -> Self {
+            let r = value.rotation;
+            let t = value.translation;
+            let z = T::zero().into();
+            let o = T::one().into();
+
+            Self::from([
+                [r[0][0], r[0][1], r[0][2], t[0][0]],
+                [r[1][0], r[1][1], r[1][2], t[1][0]],
+                [r[2][0], r[2][1], r[2][2], t[2][0]],
+                [z, z, z, o],
+            ])
+        }
+    }
+
     impl<T: Float> PartialEq<Matrix<4, 4, T>> for Transformation<T> {
         /// Compares transformation matrix to a 4x4 matrix
         fn eq(&self, other: &Matrix<4, 4, T>) -> bool {
@@ -2062,19 +2165,18 @@ pub mod statics {
         /// );
         /// ```
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            let strings: [[String; 4]; 4] = core::array::from_fn(|i| {
-                core::array::from_fn(|j| {
-                    if i < 3 {
-                        if j < 3 { format!("{}", self.rotation[i][j]) }
-                        else { format!("{}", self.translation[i][0]) }
-                    }
-                    else if j < 3 { format!("{}", T::zero()) }
-                    else { format!("{}", T::one()) }
-                })
-            });
-            let col_widths: [usize; 4] = core::array::from_fn(|j| {
-                (0..4).map(|i| strings[i][j].len()).max().unwrap_or(0)
-            });
+            // caution: format macro creates heap allocated memory
+            let strings: [[String; 4]; 4] = core::array::from_fn(|i| core::array::from_fn(|j|
+                if i < 3 {
+                    if j < 3 { format!("{}", self.rotation[i][j]) }
+                    else { format!("{}", self.translation[i][0]) }
+                }
+                else if j < 3 { format!("{}", T::zero()) }
+                else { format!("{}", T::one()) }
+            ));
+
+            let col_widths: [usize; 4] = core::array::from_fn(|j| (0..4).map(|i| strings[i][j].len()).max().unwrap_or(0));
+
             for s in strings.iter().take(4) {
                 write!(f, "│")?;
                 for j in 0..4 {
@@ -2082,6 +2184,7 @@ pub mod statics {
                 }
                 writeln!(f, " │")?;
             }
+
             Ok(())
         }
     }
@@ -2193,7 +2296,7 @@ pub mod statics {
             (Screw { angular: self.angular, linear: self.linear }, theta)
         }
 
-        /// creates the adjoint 4x4 matrix for [Twist].
+        /// creates the adjoint 4x4 matrix for [Twist] by taking the ownership of the [`Twist`].
         /// ```rust
         /// use seigyo::{Matrix, statics::Twist};
         ///
@@ -2207,14 +2310,14 @@ pub mod statics {
         /// ]);
         ///
         /// let twist: Twist<f64> = matrix.into();
-        /// assert_eq!(twist.adjoint(), Matrix::from([
+        /// assert_eq!(twist.to_adjoint(), Matrix::from([
         ///     [0., 2., 0., 2.8],
         ///     [-2., 0., 0., 4.],
         ///     [0., 0., 0., 0.],
         ///     [0., 0., 0., 0.],
         /// ]));
         /// ```
-        pub fn adjoint(&self) -> Matrix<4, 4, T> {
+        pub fn to_adjoint(self) -> Matrix<4, 4, T> {
             let adjoint = self.angular.skew_symmetric();
             let zero = T::zero().into();
 
@@ -2307,6 +2410,36 @@ pub mod statics {
                 angular: Matrix::new_zero(),
                 linear: Matrix::new_zero(),
             }
+        }
+    }
+
+    impl<T: Float> Display for Screw<T> {
+        /// Display for Twist
+        /// ```rust
+        /// use seigyo::{Matrix, statics::Screw};
+        ///
+        /// let matrix = Matrix::from([
+        ///     [0.],
+        ///     [0.],
+        ///     [-1.],
+        ///     [1.4],
+        ///     [2.],
+        ///     [0.],
+        /// ]);
+        ///
+        /// let screw = Screw::try_from(matrix).expect("invalid screw matrix");
+        ///
+        /// assert_eq!(screw.to_string(), "│\t0\t│\n│\t0\t│\n│\t-1\t│\n│\t1.4\t│\n│\t2\t│\n│\t0\t│\n");
+        /// ```
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            for i in 0..3 {
+                writeln!(f, "│\t{}\t│", self.angular[i][0])?;
+            }
+            for i in 0..3 {
+                writeln!(f, "│\t{}\t│", self.linear[i][0])?;
+            }
+
+            Ok(())
         }
     }
 
@@ -2431,7 +2564,8 @@ pub mod statics {
         /// );
         ///
         /// assert_eq!(twist, twist_result);
-        /// ```        #[inline]
+        /// ```
+       #[inline]
         pub fn to_twist(mut self, theta: T) -> Twist<T> {
             if !self.angular.is_zero() {
                 self.angular *= theta;
@@ -2465,6 +2599,64 @@ pub mod statics {
 
             Transformation { rotation, translation }
         }
+
+        /// Transforms a screw matrix given a transformation matrix
+        ///
+        /// $$S_a = [Ad_{T_{ab}}]S_b$$
+        pub fn transform(self, transformation: Transformation<T>) -> Self {
+            let adjoint = transformation.to_adjoint();
+            let matrix: Matrix<6, 1, T> = self.into();
+
+            let value = adjoint * matrix;
+
+            let angular = Matrix::from([
+                value[0],
+                value[1],
+                value[2],
+            ]);
+
+            let linear = Matrix::from([
+                value[3],
+                value[4],
+                value[5],
+            ]);
+
+            Self{ angular, linear }
+        }
+
+        /// creates the adjoint 4x4 matrix for [`Screw`] by taking the ownership of the [`Screw`].
+        /// ```rust
+        /// use seigyo::{Matrix, statics::Screw};
+        ///
+        /// let matrix = Matrix::from([
+        ///     [0.],
+        ///     [0.],
+        ///     [-1.],
+        ///     [1.4],
+        ///     [2.],
+        ///     [0.],
+        /// ]);
+        ///
+        /// let screw = Screw::try_from(matrix).expect("invalid screw matrix");
+        /// 
+        /// assert_eq!(screw.to_adjoint(), Matrix::from([
+        ///     [0., 1., 0., 1.4],
+        ///     [-1., 0., 0., 2.],
+        ///     [0., 0., 0., 0.],
+        ///     [0., 0., 0., 0.],
+        /// ]));
+        /// ```
+        pub fn to_adjoint(self) -> Matrix<4, 4, T> {
+            let adjoint = self.angular.skew_symmetric();
+            let zero = T::zero().into();
+
+            Matrix::from([
+                [adjoint[0][0], adjoint[0][1], adjoint[0][2], self.linear[0][0]],
+                [adjoint[1][0], adjoint[1][1], adjoint[1][2], self.linear[1][0]],
+                [adjoint[2][0], adjoint[2][1], adjoint[2][2], self.linear[2][0]],
+                [zero; 4],
+            ])
+        }
     }
 
     impl<T: Float> TryFrom<Matrix<6, 1, T>> for Screw<T> {
@@ -2486,6 +2678,23 @@ pub mod statics {
         }
     }
 
+    impl<T: Float> From<Screw<T>> for Matrix<6, 1, T> {
+        fn from(value: Screw<T>) -> Self {
+            let a = value.angular;
+            let l = value.linear;
+
+            Self::from([
+              [a[0][0]],
+              [a[1][0]],
+              [a[2][0]],
+              [l[0][0]],
+              [l[1][0]],
+              [l[2][0]],
+            ])
+        }
+    }
+
+    /// Multiplying a [`Screw`] by a theta gives a [`Twist`].
     impl<T: Float> core::ops::Mul<T> for Screw<T> {
         type Output = Twist<T>;
 
@@ -2530,14 +2739,12 @@ pub mod statics {
         /// let manipulator = Manipulator;
         /// let fk = manipulator.fk_body(m, b_list, theta_list);
         ///
-        /// assert_eq!(fk,
-        ///     Matrix::from([
-        ///         [0., 0., -0.99999994, 0.31572855],
-        ///         [0., 1., 0., 0.],
-        ///         [0.99999994, 0., 0., 0.65708894],
-        ///         [0., 0., 0., 1.]]
-        ///     )
-        /// );
+        /// assert_eq!(fk, Matrix::from([
+        ///     [0., 0., -0.99999994, 0.31572855],
+        ///     [0., 1., 0., 0.],
+        ///     [0.99999994, 0., 0., 0.65708894],
+        ///     [0., 0., 0., 1.]
+        /// ]));
         /// ```
         fn fk_body(&self, m: Transformation<T>, b_list: [Screw<T>; N], theta_list: [T; N]) -> Transformation<T> {
             b_list.into_iter().zip(theta_list).fold(m, |acc, (b_frame, theta)| acc * b_frame.exp(theta))
@@ -2587,12 +2794,26 @@ pub mod statics {
             s_list.into_iter().zip(theta_list).rev().fold(m, |acc, (s_frame, theta)| s_frame.exp(theta) * acc)
         }
 
-        fn j_body(s_list: [Screw<T>; N], theta_list: [T; N]) -> Matrix<6, N> {
+        fn j_body(b_list: [Screw<T>; N], theta_list: [T; N]) -> Matrix<6, N> {
             todo!()
         }
 
-        fn j_space(b_list: [Screw<T>; N], theta_list: [T; N]) -> Matrix<6, N> {
-            todo!()
+        fn j_space(s_list: [Screw<T>; N], theta_list: [T; N]) -> Matrix<6, N, T> {
+            // jacobian
+            let mut j = Matrix::new_zero();
+            // running transformation
+            let mut t = Transformation::default();
+
+            for (c, (screw, theta)) in s_list.into_iter().zip(theta_list).enumerate() {
+                let screw_matrix = Matrix::from(screw.clone());
+                let j_i = t.clone().to_adjoint() * screw_matrix;
+
+                // set the c'th column of jacobian
+                (0..6).for_each(|r| j[r][c] = j_i[r][0]);
+                t *= screw.exp(theta);
+            }
+
+            j
         }
     }
 

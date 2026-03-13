@@ -48,7 +48,7 @@ mod manipulator {
         let theta_list = [
             0.,
             0.,
-            0.,
+            core::f64::consts::FRAC_PI_2,
             core::f64::consts::FRAC_PI_2,
         ];
 
