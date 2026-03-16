@@ -7,7 +7,7 @@ async fn main() {
 
 mod manipulator {
     use std::process::exit;
-    use seigyo::{Matrix, statics::{KinematicsChain, Screw, Transformation}};
+    use seigyo::{Matrix, KinematicsChain, Screw, Transformation};
     use time::Clock;
     use config::Config;
     use gz::{msgs::double::Double, transport::{Node, Publisher}};
@@ -180,7 +180,7 @@ mod manipulator {
         }
     }
 
-    impl<const N: usize> seigyo::statics::KinematicsChain<N> for Manipulator<'_, N> {}
+    impl<const N: usize> seigyo::KinematicsChain<N> for Manipulator<'_, N> {}
 
     mod time {
         use std::ops::Add;
