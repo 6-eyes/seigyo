@@ -39,7 +39,7 @@ mod manipulator {
         };
 
         // create manipulator
-        let mut manipulator = Manipulator::<4>::init([0.; 4], &mut node, &clock).await.unwrap_or_else(|e| {
+        let mut manipulator = Manipulator::<5>::init([0.; 5], &mut node, &clock).await.unwrap_or_else(|e| {
             log::error!("unable to initialize manipulator: {e}");
             exit(4);
         });
@@ -48,6 +48,7 @@ mod manipulator {
         let theta_list = [
             0.,
             0.,
+            core::f64::consts::FRAC_PI_2,
             core::f64::consts::FRAC_PI_2,
             core::f64::consts::FRAC_PI_2,
         ];
@@ -61,15 +62,15 @@ mod manipulator {
     }
 
 
-    fn log_fk_space(manipulator: &Manipulator<4>, theta_list: &[f64; 4]) {
+    fn log_fk_space(manipulator: &Manipulator<5>, theta_list: &[f64; 5]) {
         let rotation = Matrix::from([
-            [0., 0., -1.],
-            [1., 0., 0.],
-            [0., -1., 0.],
+            [-1., 0., 0.],
+            [0., 0., 1.],
+            [0., 1., 0.],
         ]);
         
         let translation = Matrix::from([
-           [- 0.15 - 0.295 - 0.221],
+           [- 0.15 - 0.295 - 0.221 - 0.138],
            [0.02 - 0.048],
            [0.244 + 0.045],
         ]);
@@ -90,10 +91,13 @@ mod manipulator {
             Screw::new_revolute(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[-0.15], [0.02], [0.084 + 0.16]])).expect("invalid screw marix"),
             // omega = [0, 1, 0]
             // q = [-0.15-0.295, 0.02, 0.084 + 0.16] = [-0.445, 0.02, 0.244]
-            Screw::new_revolute(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[-0.15-0.295], [0.02], [0.084 + 0.16]])).expect("invalid screw marix"),
-            // omega = [0, 1, 1]
-            // q = [-0.15-]
-            Screw::new_revolute(Matrix::from([[-1.], [0.], [0.]]), Matrix::from([[- 0.15- 0.295 - 0.221], [0.02 - 0.048], [0.084 + 0.16 + 0.045]])).expect("invalid screw marix"),
+            Screw::new_revolute(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[-0.15 - 0.295], [0.02], [0.084 + 0.16]])).expect("invalid screw marix"),
+            // omega = [-1, 0, 0]
+            // q = [-0.15-0.295-0.221]
+            Screw::new_revolute(Matrix::from([[-1.], [0.], [0.]]), Matrix::from([[- 0.15 - 0.295 - 0.221], [0.02 - 0.048], [0.084 + 0.16 + 0.045]])).expect("invalid screw marix"),
+            // omega = [0, 1, 0]
+            // q = [-0.15-0.295-0.221-0.138]
+            Screw::new_revolute(Matrix::from([[0.], [1.], [0.]]), Matrix::from([[- 0.15 - 0.295 - 0.221 - 0.138], [0.02 - 0.048], [0.084 + 0.16 + 0.045]])).expect("invalid screw marix"),
         ];
 
         let t = manipulator.fk_space(m, s_list, *theta_list);
@@ -103,8 +107,7 @@ mod manipulator {
     struct Manipulator<'cl, const N: usize> {
         state: [f64; N],
         joints: [Publisher<Double>; N],
-        clock: &'cl Clock,
-    }
+        clock: &'cl Clock, }
 
     impl<'cl, const N: usize> Manipulator<'cl, N> {
         /// ## Initialize the manipulator

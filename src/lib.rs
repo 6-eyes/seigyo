@@ -2816,6 +2816,7 @@ pub trait KinematicsChain<const N: usize, T: Float = f64> {
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
+    /// Error for matrix operations
     Matrix(MatrixError),
     /// The provided rotation matrix is singular
     RotationSingular,
@@ -2841,6 +2842,12 @@ impl core::fmt::Display for Error {
 impl From<ScrewError> for Error {
     fn from(value: ScrewError) -> Self {
         Self::Screw(value)
+    }
+}
+
+impl From<MatrixError> for Error {
+    fn from(value: MatrixError) -> Self {
+        Self::Matrix(value)
     }
 }
 
