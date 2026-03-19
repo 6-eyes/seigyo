@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 pub trait Float:
     core::ops::Neg<Output = Self>
     + core::ops::Div<Output = Self>
@@ -2701,6 +2703,51 @@ impl<T: Float> core::ops::Mul<T> for Screw<T> {
 
     fn mul(self, rhs: T) -> Self::Output {
         self.to_twist(rhs)
+    }
+}
+
+struct MomentOfInertia<T: Float>(Matrix<3, 3, T>);
+
+impl<T: Float> Deref for MomentOfInertia<T> {
+    type Target = Matrix<3, 3, T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T: Float> MomentOfInertia<T> {
+    pub fn new_cuboid(l: T, b: T, h: T) -> Self {
+        todo!()
+    }
+
+    pub fn new_cylinder(r: T, h: T) -> Self {
+        todo!()
+    }
+    
+    pub fn new_ellepsoid(a: T, b: T, c: T) -> Self {
+        todo!()
+    }
+
+    pub fn transform(&mut self, transformation: Transformation<T>) {
+        todo!()
+    }
+
+    /// Creates the $6 \times 6$ spatial inertia matrix.
+    /// 
+    /// Comsumes self.
+    pub fn to_spatial_inertia(self, mass: T) -> Matrix<6, 6, T> {
+        let zero = T::zero().into();
+        let mass = mass.into();
+
+        Matrix::from([
+            [self[0][0], self[0][1], self[0][2], zero, zero, zero],
+            [self[1][0], self[1][1], self[1][2], zero, zero, zero],
+            [self[2][0], self[2][1], self[2][2], zero, zero, zero],
+            [zero, zero, zero, mass, zero, zero],
+            [zero, zero, zero, zero, mass, zero],
+            [zero, zero, zero, zero, zero, mass],
+        ])
     }
 }
 
