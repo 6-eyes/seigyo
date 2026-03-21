@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 pub trait Float:
     core::ops::Neg<Output = Self>
     + core::ops::Div<Output = Self>
@@ -17,6 +15,7 @@ pub trait Float:
     + PartialEq
     + Copy
     + Sized
+    + Default
     // compare to real complex numbers
     + PartialEq<Complex<Self>>
 {
@@ -25,12 +24,6 @@ pub trait Float:
 
     /// abstracting powi from floating types
     fn powi(self, n: i32) -> Self;
-
-    /// method to produce zero vector for the floating type
-    fn zero() -> Self;
-
-    /// method to produce unity vector for the floating type
-    fn one() -> Self;
 
     /// method to return 10
     fn ten() -> Self;
@@ -61,6 +54,12 @@ pub trait Float:
 
     /// abstracting cos from floating types
     fn cos(self) -> Self;
+
+    /// type conversion from f64 to Self
+    fn from_f64(v: f64) -> Self;
+
+    /// type conversion from f32 to Self
+    fn from_f32(v: f32) -> Self;
 }
 
 impl Float for f32 {
@@ -72,16 +71,6 @@ impl Float for f32 {
     #[inline(always)]
     fn powi(self, n: i32) -> Self {
         self.powi(n)
-    }
-    
-    #[inline(always)]
-    fn zero() -> Self {
-        0.
-    }
-
-    #[inline(always)]
-    fn one() -> Self {
-        1.
     }
 
     #[inline(always)]
@@ -129,6 +118,16 @@ impl Float for f32 {
     fn max(self, other: Self) -> Self {
         if self < other { other } else { self }
     }
+
+    #[inline(always)]
+    fn from_f32(v: f32) -> Self {
+        v
+    }
+
+    #[inline(always)]
+    fn from_f64(v: f64) -> Self {
+        v as Self
+    }
 }
 
 impl Float for f64 {
@@ -140,16 +139,6 @@ impl Float for f64 {
     #[inline(always)]
     fn powi(self, n: i32) -> Self {
         self.powi(n)
-    }
-    
-    #[inline(always)]
-    fn zero() -> Self {
-        0.
-    }
-
-    #[inline(always)]
-    fn one() -> Self {
-        1.
     }
 
     #[inline(always)]
@@ -187,6 +176,16 @@ impl Float for f64 {
     fn cos(self) -> Self {
         self.cos()
     }
+
+    #[inline(always)]
+    fn from_f32(v: f32) -> Self {
+        v as Self
+    }
+
+    #[inline(always)]
+    fn from_f64(v: f64) -> Self {
+        v
+    }
 }
 
 /// Defines a complex number
@@ -195,7 +194,9 @@ pub struct Complex<T: Float = f64>(T, T);
 
 impl<T: Float> Default for Complex<T> {
     fn default() -> Self {
-        Self(T::zero(), T::zero())
+        let zero = T::default();
+
+        Self(zero, zero)
     }
 }
 
@@ -265,7 +266,7 @@ impl<T: Float> Complex<T> {
             self.1.abs()
         }
         else {
-            self.norm_squared().sqrt()
+            self.normsq().sqrt()
         }
     }
 
@@ -274,7 +275,7 @@ impl<T: Float> Complex<T> {
     /// - this can be used in multiple place where the equation demands square of a norm.
     /// - this can be used to avoid the step of calculating square root and then calculating the square again.
     #[inline(always)]
-    pub fn norm_squared(&self) -> T {
+    pub fn normsq(&self) -> T {
         self.0.powi(2) + self.1.powi(2)
     }
 
@@ -296,7 +297,7 @@ impl<T: Float> Complex<T> {
             (true, true) => self,
             (false, true) => self / self.0,
             (true, false) => self / self.1,
-            (false, false) => self / self.norm_squared().sqrt(),
+            (false, false) => self / self.normsq().sqrt(),
         }
     }
 
@@ -341,7 +342,7 @@ impl<T: Float> Complex<T> {
 
     #[inline(always)]
     fn is_one(&self) -> bool {
-        self.is_real() && (self.0 - T::one()).abs() < T::tolerance()
+        self.is_real() && (self.0 - T::from_f32(1.)).abs() < T::tolerance()
     }
 
     /// ### Dot product
@@ -399,7 +400,7 @@ impl<T: Float> core::ops::DivAssign for Complex<T> {
     /// ```
     #[inline]
     fn div_assign(&mut self, rhs: Self) {
-        let mag = rhs.norm_squared();
+        let mag = rhs.normsq();
         *self = Self((self.0 * rhs.0 - self.1 * rhs.1) / mag, (self.0 * rhs.1 + self.1 * rhs.0) / mag);
     }
 }
@@ -659,7 +660,7 @@ impl<T: Float> From<T> for Complex<T> {
     /// assert_eq!(complex, Complex::new(-1., 0.));
     /// ```
     fn from(var: T) -> Self {
-        Self(var, T::zero())
+        Self(var, T::default())
     }
 }
 
@@ -705,12 +706,14 @@ impl<T: Float> core::fmt::Display for Complex<T> {
     /// assert_eq!(complex.to_string(), "1.33 + 20.55j".to_string());
     /// ```
    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
-        if self.0 == T::zero() {
-            write!(f, "{}", if self.1 == T::zero() { "0".to_string() } else { format!("{}j", self.1) })?;
+        let zero = T::default();
+
+        if self.0 == zero {
+            write!(f, "{}", if self.1 == zero { "0".to_string() } else { format!("{}j", self.1) })?;
         }
         else {
             write!(f, "{}", self.0)?;
-            if self.1 != T::zero() {
+            if self.1 != zero {
                 write!(f, " + {}j", self.1)?;
             }
         }
@@ -1121,7 +1124,7 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
     /// ```
     pub fn new_zero() -> Self {
         assert_ne!((R, C), (0, 0), "Cannot create a matrix with no dimensions");
-        Self([[T::zero().into(); C]; R])
+        Self([[Complex::default(); C]; R])
     }
 
     /// Returns a new transposed matrix.
@@ -1135,7 +1138,7 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
     ///
     /// assert_eq!(a.transpose(), a_c_t);
     /// ```
-    pub fn transpose(&self) -> Matrix<C, R, T> {
+    pub fn transpose(self) -> Matrix<C, R, T> {
         Matrix(core::array::from_fn(|j| core::array::from_fn(|i| self[i][j])))
     }
 
@@ -1265,19 +1268,19 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
     /// let a = Matrix::from([[3., 3.], [1., 1.]]);
     /// a.qr().unwrap();
     /// ```
-    pub fn qr(self) -> Result<(Matrix<R, R, T>, Matrix<R, C, T>), MatrixError> {
+    pub fn qr(self) -> Result<(Matrix<R, R, T>, Matrix<R, C, T>), Error> {
         // todo: for m < n
         let mut q = Matrix::new_identity();
         let mut r = self;
 
-        let two = T::one() + T::one();
+        let two = T::from_f32(2.);
 
         for i in 0..C {
             // norm of i-th column (rows i..R)
-            let norm_x_sq = (i..R).map(|k| r[k][i].norm_squared()).sum::<T>();
+            let norm_x_sq = (i..R).map(|k| r[k][i].normsq()).sum::<T>();
             let norm = norm_x_sq.sqrt();
             if norm < T::tolerance() {
-                return Err(MatrixError::Singular);
+                return Err(Error::SingularMatrix);
             }
 
             let alpha = match r[i][i].is_zero() {
@@ -1348,21 +1351,21 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
     ///
     /// todo!("not yet implemented")
     /// ```
-    pub fn svd(self) -> Result<(Matrix<R, R, T>, Matrix<R, C, T>, Matrix<C, C, T>), MatrixError> {
+    pub fn svd(self) -> Result<(Matrix<R, R, T>, Matrix<R, C, T>, Matrix<C, C, T>), Error> {
         let mut u = Matrix::new_identity();
         let mut m = self;
         let mut v = Matrix::new_identity();
 
-        let two = T::one() + T::one();
+        let two = T::from_f32(2.);
 
         for i in 0..C {
             // column reflection block
             {
                 // norm of i-th column (rows i..R)
-                let norm_x_sq = (i..R).map(|k| m[k][i].norm_squared()).sum::<T>();
+                let norm_x_sq = (i..R).map(|k| m[k][i].normsq()).sum::<T>();
                 let norm = norm_x_sq.sqrt();
                 if norm < T::tolerance() {
-                    return Err(MatrixError::Singular);
+                    return Err(Error::SingularMatrix);
                 }
 
                 let alpha = match m[i][i].is_zero() {
@@ -1401,7 +1404,7 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
             // if C <= 2, then it is already row normalized
             if C > 2 && i < C - 2 {
                 let pc = i + 1; // pivot column
-                let norm_sq = (pc..C).map(|j| m[i][j].norm_squared()).sum::<T>();
+                let norm_sq = (pc..C).map(|j| m[i][j].normsq()).sum::<T>();
                 let norm = norm_sq.sqrt();
 
                 // if norm from pivot is zero in the row, the row is already reduced
@@ -1457,7 +1460,7 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
     /// ```
     pub fn normalize_columns(&mut self) {
         for c in 0..C {
-            let sum = (0..R).map(|r| self.0[r][c].norm_squared()).sum::<T>().sqrt();
+            let sum = (0..R).map(|r| self.0[r][c].normsq()).sum::<T>().sqrt();
             (0..R).for_each(|r| self[r][c] /= sum);
         }
     }
@@ -1468,8 +1471,8 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
     /// Exact `1` is unrealistic. Tolerance is used to determine how close the sum is to `1`.
     pub fn has_normal_columns(&self) -> bool {
         (0..C).map(|c| // cols
-            (0..R).map(|r| self.0[r][c].norm_squared()).sum::<T>().sqrt() // sum all elements in the row
-        ).all(|sum| (sum - T::one()).abs() <= T::tolerance())
+            (0..R).map(|r| self.0[r][c].normsq()).sum::<T>().sqrt() // sum all elements in the row
+        ).all(|sum| (sum - T::from_f32(1.)).abs() <= T::tolerance())
     }
 
 
@@ -1519,9 +1522,11 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
     /// assert!(!a.is_orthogonal(), "matrix is orthogonal");
     /// ```
     pub fn is_orthogonal(&self) -> bool {
-        (C > R && (self * self.transpose()).is_identity())
+        let transpose = self.to_owned().transpose();
+
+        (C > R && (self * &transpose).is_identity())
             || 
-        ((self.transpose() * self).is_identity())
+        ((transpose * self).is_identity())
     }
 
     /// Checks if a matrix represents identity matrix or not.
@@ -1544,8 +1549,8 @@ impl<T: Float, const C: usize> Matrix<C, C, T> {
     pub fn new_identity() -> Self {
         assert_ne!(C, 0, "Cannot create a matrix with no dimensions");
         Self(core::array::from_fn(|i| core::array::from_fn(|j| match j == i {
-            true => T::one(),
-            false => T::zero(),
+            true => T::from_f32(1.),
+            false => T::default(),
         }.into())))
     }
 
@@ -1573,7 +1578,7 @@ impl<T: Float, const C: usize> Matrix<C, C, T> {
     /// ```
     pub fn determinant(&self) -> Complex<T> {
         let mut matrix = self.0;
-        let [mut det, mut total] = [Complex::from(T::one()); 2];
+        let [mut det, mut total] = [Complex::from(T::from_f32(1.)); 2];
 
         for diag_row in 0..C {
             // swap row with non-zero element
@@ -1691,7 +1696,7 @@ impl<T: Float, const C: usize> Matrix<C, C, T> {
     /// let a = Matrix::from([[1., -2., 2.], [-1., 2., -2.], [3., -2., -1.]]);
     /// a.inverse().unwrap();
     /// ```
-    pub fn inverse(&self) -> Result<Self, MatrixError> {
+    pub fn inverse(&self) -> Result<Self, Error> {
         let mut matrix = self.0;
         let mut inverse = Self::new_identity();
 
@@ -1701,7 +1706,7 @@ impl<T: Float, const C: usize> Matrix<C, C, T> {
                 magnitude(matrix[a][i]).partial_cmp(&magnitude(matrix[b][i])).unwrap_or(core::cmp::Ordering::Equal)
             }) {
                 Some(max_row) if !matrix[max_row][i].is_zero() => max_row,
-                _ => return Err(MatrixError::Singular),
+                _ => return Err(Error::SingularMatrix),
             };
 
             // swap row
@@ -1726,6 +1731,10 @@ impl<T: Float, const C: usize> Matrix<C, C, T> {
         }
 
         Ok(inverse)
+    }
+
+    pub fn is_symmetric(&self) -> bool {
+        todo!()
     }
 }
 
@@ -1760,7 +1769,7 @@ impl<T: Float> Matrix<3, 1, T> {
     /// ## Skew Symmetric
     /// Method to make skew symmetric of a 3x1 matrix
     fn skew_symmetric(self) -> Matrix<3, 3, T> {
-        let zero = T::zero().into();
+        let zero = Complex::default();
         Matrix::from([
             [zero, -self[2][0], self[1][0]],
             [self[2][0], zero, -self[0][0]],
@@ -1932,7 +1941,7 @@ impl<T: Float> Transformation<T> {
     /// Method to find inverse of the transformation matrix
     /// $$T^{-1} = \begin{bmatrix} R & p \\ 0 & 1 \end{bmatrix}^{-1} = \begin{bmatrix} R^T & -R^Tp \\ 0 & 1\end{bmatrix}$$
     /// Also,$$R^TR = I$$
-    pub fn inverse(&self) -> Self {
+    pub fn inverse(self) -> Self {
         let rotation = self.rotation.transpose();
         let translation = -(&rotation * &self.translation);
 
@@ -1957,21 +1966,21 @@ impl<T: Float> Transformation<T> {
     /// 1. the given matrix is singular [`Error::RotationSingular`].
     /// 2. the given matrix doesn't have orthogonal columns [`Error::RotationNonOrthogonal`].
     /// 3. the given matrix doesn't have a positive determinant ( = 1) [`Error::RotationInvalidOrientation`].
-    fn validate_rotation(rotation: &Matrix<3, 3, T>) -> Result<(), Error> {
+    fn validate_rotation(rotation: &Matrix<3, 3, T>) -> Result<(), TransformationError> {
         // matrix should not be singular
         if rotation.is_singular() {
-            return Err(Error::RotationSingular);
+            return Err(TransformationError::RotationSingular);
         }
 
         // columns should be orthogonal
         if [(0, 1), (0, 2), (1, 2)].iter().any(|&(c1, c2)| !(0..3).map(|i| rotation[i][c1] * rotation[i][c2]).sum::<Complex<T>>().is_zero()) {
-            return Err(Error::RotationNonOrthogonal);
+            return Err(TransformationError::RotationNonOrthogonal);
         }
 
         // check orientation: determinant should be real and equal to 1
         let determinant = rotation.determinant();
-        if determinant.is_imaginary() || (determinant.real() - T::one()).abs() > T::tolerance() {
-            return Err(Error::RotationInvalidOrientation);
+        if determinant.is_imaginary() || (determinant.real() - T::from_f32(1.)).abs() > T::tolerance() {
+            return Err(TransformationError::RotationInvalidOrientation);
         }
 
         Ok(())
@@ -2007,7 +2016,7 @@ impl<T: Float> Transformation<T> {
     /// ```
     pub fn to_adjoint(self) -> Matrix<6, 6, T> {
         let one_zero = self.translation.skew_symmetric() * &self.rotation;
-        let zero = T::zero().into();
+        let zero = Complex::default();
 
         Matrix::from([
             [self.rotation[0][0], self.rotation[0][1], self.rotation[0][2], zero, zero, zero],
@@ -2130,8 +2139,8 @@ impl<T: Float> From<Transformation<T>> for Matrix<4, 4, T> {
     fn from(value: Transformation<T>) -> Self {
         let r = value.rotation;
         let t = value.translation;
-        let z = T::zero().into();
-        let o = T::one().into();
+        let z = Complex::default();
+        let o = T::from_f32(1.).into();
 
         Self::from([
             [r[0][0], r[0][1], r[0][2], t[0][0]],
@@ -2174,8 +2183,8 @@ impl<T: Float> core::fmt::Display for Transformation<T> {
                 if j < 3 { format!("{}", self.rotation[i][j]) }
                 else { format!("{}", self.translation[i][0]) }
             }
-            else if j < 3 { format!("{}", T::zero()) }
-            else { format!("{}", T::one()) }
+            else if j < 3 { format!("{}", T::default()) }
+            else { format!("{}", T::from_f32(1.)) }
         ));
 
         let col_widths: [usize; 4] = core::array::from_fn(|j| (0..4).map(|i| strings[i][j].len()).max().unwrap_or(0));
@@ -2322,7 +2331,7 @@ impl<T: Float> Twist<T> {
     /// ```
     pub fn to_adjoint(self) -> Matrix<4, 4, T> {
         let adjoint = self.angular.skew_symmetric();
-        let zero = T::zero().into();
+        let zero = Complex::default();
 
         Matrix::from([
             [adjoint[0][0], adjoint[0][1], adjoint[0][2], self.linear[0][0]],
@@ -2591,7 +2600,7 @@ impl<T: Float> Screw<T> {
         // 1. calculate skew symmetric matrix
         let skew = self.angular.skew_symmetric();
         let skew_sq = &skew * &skew;
-        let one_minus_cos = Complex::from(T::one() - theta.cos());
+        let one_minus_cos = Complex::from(T::from_f32(1.) - theta.cos());
         let sin = theta.sin();
 
         // 2. Rodrigues' formula
@@ -2651,7 +2660,7 @@ impl<T: Float> Screw<T> {
     /// ```
     pub fn to_adjoint(self) -> Matrix<4, 4, T> {
         let adjoint = self.angular.skew_symmetric();
-        let zero = T::zero().into();
+        let zero = Complex::default();
 
         Matrix::from([
             [adjoint[0][0], adjoint[0][1], adjoint[0][2], self.linear[0][0]],
@@ -2706,48 +2715,227 @@ impl<T: Float> core::ops::Mul<T> for Screw<T> {
     }
 }
 
-struct MomentOfInertia<T: Float>(Matrix<3, 3, T>);
-
-impl<T: Float> Deref for MomentOfInertia<T> {
-    type Target = Matrix<3, 3, T>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+/// # Moment of Inertia
+/// Describes the $3 \times 3$ moment of inertia [`Matrix`].
+#[derive(Debug, Default, Clone)]
+pub struct MomentOfInertia<T: Float> {
+    /// mass of the object
+    m: T,
+    ixx: T, iyy: T, izz: T,
+    ixy: T, iyz: T, ixz: T,
 }
 
 impl<T: Float> MomentOfInertia<T> {
-    pub fn new_cuboid(l: T, b: T, h: T) -> Self {
-        todo!()
+    /// Cretes a new [`MomentOfInertia`] matrix from the given mass and $3 \times 3$ inertia_matrix.
+    /// 
+    /// Throws [`Error::AsymmetricMatrix`] if the given inertia matrix is not symmetric
+    pub fn new(m: T, inertia_matrix: Matrix<3, 3, T>) -> Result<Self, Error> {
+        if inertia_matrix.is_symmetric() {
+            let [ixx, iyy, izz] = core::array::from_fn(|i| i).map(|i| inertia_matrix[i][i].real());
+            let ixy = inertia_matrix[0][1].real();
+            let iyz = inertia_matrix[1][2].real();
+            let ixz = inertia_matrix[0][2].real();
+
+            Ok(Self { m, ixx, iyy, izz, ixy, ixz, iyz })
+        }
+        else {
+            Err(Error::AsymmetricMatrix)
+        }
     }
 
-    pub fn new_cylinder(r: T, h: T) -> Self {
-        todo!()
+    /// ## Moment of inertia of Cuboid
+    /// Assumptions:
+    /// - The mass density is uniform.
+    /// - The x, y, z align with the **principal axes of the object**. The axes passes through the centroid of the shape.
+    ///
+    /// The formula is given by:
+    /// $$I_ww = \frac{m}{12}\left( l^2 + h^2 \right)$$
+    /// 
+    /// ```rust
+    /// use seigyo::{Matrix, MomentOfInertia};
+    /// 
+    /// let moi = MomentOfInertia::new_cuboid(24., 0.01, 0.054, 0.033);
+    /// 
+    /// assert_eq!(moi, Matrix::from([
+    ///     [0.00801, 0., 0.],
+    ///     [0., 0.0023780000000000003, 0.],
+    ///     [0., 0., 0.006031999999999999],
+    /// ]));
+    /// ```
+    pub fn new_cuboid(m: T, x: T, y: T, z: T) -> Self {
+        let [x_sq, y_sq, z_sq] = [x, y, z].map(|a| a.powi(2));
+
+        let moi = |a_sq: T, b_sq: T| m * (a_sq + b_sq) / T::from_f32(12.);
+
+        let ixx = moi(y_sq, z_sq);
+        let iyy = moi(x_sq, z_sq);
+        let izz = moi(x_sq, y_sq);
+
+        Self { m, ixx, iyy, izz, ..Default::default() }
+    }
+
+    /// ## Moment of inertia of Cylinder
+    /// Assumptions:
+    /// - The mass density is uniform.
+    /// - The x, y, z align with the **principal axes of the object**. The axes passes through the centroid of the shape.
+    /// - The cylinder axis is the *z axis*.
+    /// ```rust
+    /// use seigyo::{Matrix, MomentOfInertia};
+    /// 
+    /// let moi = MomentOfInertia::new_cylinder(1.2, 0.058, 0.012);
+    /// 
+    /// assert_eq!(moi, Matrix::from([
+    ///     [0.0010236, 0., 0.],
+    ///     [0., 0.0010236, 0.],
+    ///     [0., 0., 0.0020184],
+    /// ]));
+    /// ```
+    pub fn new_cylinder(m: T, r: T, h: T) -> Self {
+        let r_sq = r.powi(2);
+
+        let moi_curved = m * (T::from_f32(3.) * r_sq + h.powi(2)) / T::from_f32(12.);
+        let izz = m * r_sq / T::from_f32(2.);
+
+        Self { m, ixx: moi_curved, iyy: moi_curved, izz, ..Default::default() }
     }
     
-    pub fn new_ellepsoid(a: T, b: T, c: T) -> Self {
-        todo!()
+    /// ## Moment of inertia of Ellepsoid
+    /// Assumptions:
+    /// - The mass density is uniform
+    /// - The x, y, z axes align with the **principal axes of the object**. The axes passes though the centroid of the shape.
+    /// ```rust
+    /// use seigyo::{Matrix, MomentOfInertia};
+    /// 
+    /// let moi = MomentOfInertia::new_ellepsoid(21.53, 0.080, 0.120, 0.081);
+    /// 
+    /// assert_eq!(moi, Matrix::from([
+    ///     [0.090258066, 0., 0.],
+    ///     [0., 0.055810066000000005, 0.],
+    ///     [0., 0., 0.0895648],
+    /// ]));
+    /// ```
+    pub fn new_ellepsoid(m: T, x: T, y: T, z: T) -> Self {
+        let [x_sq, y_sq, z_sq] = [x, y, z].map(|a| a.powi(2));
+
+        let moi = |a_sq: T, b_sq: T| m * (a_sq + b_sq) / T::from_f32(5.);
+
+        let ixx = moi(y_sq, z_sq);
+        let iyy = moi(x_sq, z_sq);
+        let izz = moi(x_sq, y_sq);
+
+        Self { m, ixx, iyy, izz, ..Default::default() }
     }
 
-    pub fn transform(&mut self, transformation: Transformation<T>) {
-        todo!()
+    /// ```rust
+    /// todo!()
+    /// ```
+    pub fn transform(self, Transformation { rotation: r, translation: t }: &Transformation<T>) -> Self {
+        let i = Matrix::from(self.clone());
+        let r_t = r.clone().transpose();
+        let rotated = Self::new(self.m, r_t * i * r).expect("rotated matrix not skew symmetric");
+
+        // Steiner's theorem
+        let t_t = t * t.clone().transpose();
+        let t_normsq = t.iter().map(|r| r[0].real()).sum();
+        let [ixx, iyy, izz] = core::array::from_fn(|i| i).map(|i| (t_t[i][i].real() - t_normsq) * self.m);
+        let ixy = t_t[0][1].real() * self.m;
+        let ixz = t_t[0][2].real() * self.m;
+        let iyz = t_t[1][2].real() * self.m;
+
+        rotated + Self { m: self.m, ixx, iyy, izz, ixy, iyz, ixz }
     }
 
     /// Creates the $6 \times 6$ spatial inertia matrix.
     /// 
     /// Comsumes self.
-    pub fn to_spatial_inertia(self, mass: T) -> Matrix<6, 6, T> {
-        let zero = T::zero().into();
-        let mass = mass.into();
+    pub fn to_spatial_inertia(self) -> Matrix<6, 6, T> {
+        let zero = T::default();
 
         Matrix::from([
-            [self[0][0], self[0][1], self[0][2], zero, zero, zero],
-            [self[1][0], self[1][1], self[1][2], zero, zero, zero],
-            [self[2][0], self[2][1], self[2][2], zero, zero, zero],
-            [zero, zero, zero, mass, zero, zero],
-            [zero, zero, zero, zero, mass, zero],
-            [zero, zero, zero, zero, zero, mass],
+            [self.ixx, self.ixy, self.ixz, zero, zero, zero],
+            [self.ixy, self.iyy, self.iyz, zero, zero, zero],
+            [self.ixz, self.iyz, self.izz, zero, zero, zero],
+            [zero, zero, zero, self.m, zero, zero],
+            [zero, zero, zero, zero, self.m, zero],
+            [zero, zero, zero, zero, zero, self.m],
         ])
+    }
+}
+
+/// ```rust
+/// todo!()
+/// ```
+impl<T: Float> From<MomentOfInertia<T>> for Matrix<3, 3, T> {
+    fn from(value: MomentOfInertia<T>) -> Self {
+        Self::from([
+            [value.ixx, value.ixy, value.ixz],
+            [value.ixy, value.iyy, value.iyz],
+            [value.ixz, value.iyz, value.izz],
+        ])
+    }
+}
+
+/// ```rust
+/// todo!()
+/// ```
+impl<T: Float> PartialEq<Matrix<3, 3, T>> for MomentOfInertia<T> {
+    fn eq(&self, other: &Matrix<3, 3, T>) -> bool {
+        self.ixx == other[0][0] && self.ixy == other[0][1] && self.ixz == other[0][2] &&
+        self.ixy == other[1][0] && self.iyy == other[1][1] && self.iyz == other[1][2] &&
+        self.ixz == other[2][0] && self.iyz == other[2][1] && self.izz == other[2][2]
+    }
+}
+
+/// ```rust
+/// todo!()
+/// ```
+impl<T: Float> core::ops::Add for MomentOfInertia<T> {
+    type Output = Self;
+
+    fn add(mut self, rhs: Self) -> Self::Output {
+        self += rhs;
+        self
+    }
+}
+
+/// ```rust
+/// todo!()
+/// ```
+impl<T: Float> core::ops::AddAssign for MomentOfInertia<T> {
+    #[inline]
+    fn add_assign(&mut self, rhs: Self) {
+        self.ixx += rhs.ixx;        
+        self.iyy += rhs.iyy;        
+        self.izz += rhs.izz;        
+        self.ixy += rhs.ixy;        
+        self.iyz += rhs.iyz;        
+        self.ixz += rhs.ixz;        
+    }
+}
+
+/// ```rust
+/// todo!()
+/// ```
+impl<T: Float> core::ops::Sub for MomentOfInertia<T> {
+    type Output = Self;
+
+    fn sub(mut self, rhs: Self) -> Self::Output {
+        self -= rhs;
+        self
+    }
+}
+
+/// ```rust
+/// todo!()
+/// ```
+impl<T: Float> core::ops::SubAssign for MomentOfInertia<T> {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.ixx -= rhs.ixx;        
+        self.iyy -= rhs.iyy;        
+        self.izz -= rhs.izz;        
+        self.ixy -= rhs.ixy;        
+        self.iyz -= rhs.iyz;        
+        self.ixz -= rhs.ixz;        
     }
 }
 
@@ -2864,25 +3052,29 @@ pub trait KinematicsChain<const N: usize, T: Float = f64> {
 #[derive(Debug, PartialEq)]
 pub enum Error {
     /// Error for matrix operations
-    Matrix(MatrixError),
-    /// The provided rotation matrix is singular
-    RotationSingular,
-    /// The provided rotation matrix doesn't have orthogonal columns
-    RotationNonOrthogonal,
-    /// The rotation matrix has invalid orientation
-    RotationInvalidOrientation,
+    SingularMatrix,
+    /// [`Screw`] errors
     Screw(ScrewError),
+    /// [`Transformation`] errors
+    Transformation(TransformationError),
+    /// [`MomentOfInertia`] error
+    AsymmetricMatrix,
 }
 
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::Matrix(e) => write!(f, "matrix error. {e}"),
-            Self::RotationSingular => write!(f, "singular matrix received while creating rotation matrix"),
-            Self::RotationNonOrthogonal => write!(f, "columns of rotation matrix are not orthogonal"),
-            Self::RotationInvalidOrientation => write!(f, "rotation matrix not right handed. this represents reflection matrix."),
-            Self::Screw(e) => write!(f, "error while making transformation matrix. {e}"),
+            Self::SingularMatrix => write!(f, "matrix is singular"),
+            Self::Transformation(e) => write!(f, "error while making transformation matrix. {e}"),
+            Self::Screw(e) => write!(f, "error while making screw matrix. {e}"),
+            Self::AsymmetricMatrix => write!(f, "matrix is not a symmetric matrix"),
         }
+    }
+}
+
+impl From<TransformationError> for Error {
+    fn from(value: TransformationError) -> Self {
+        Self::Transformation(value)
     }
 }
 
@@ -2892,26 +3084,25 @@ impl From<ScrewError> for Error {
     }
 }
 
-impl From<MatrixError> for Error {
-    fn from(value: MatrixError) -> Self {
-        Self::Matrix(value)
-    }
-}
-
 #[derive(Debug, PartialEq)]
-pub enum MatrixError {
-    Singular,
+pub enum TransformationError {
+    /// The provided rotation matrix is singular
+    RotationSingular,
+    /// The provided rotation matrix doesn't have orthogonal columns
+    RotationNonOrthogonal,
+    /// The rotation matrix has invalid orientation
+    RotationInvalidOrientation,
 }
 
-impl core::fmt::Display for MatrixError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl core::fmt::Display for TransformationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Singular => write!(f, "Matrix is singular"),
+            Self::RotationSingular => write!(f, "singular matrix received while creating rotation matrix"),
+            Self::RotationNonOrthogonal => write!(f, "columns of rotation matrix are not orthogonal"),
+            Self::RotationInvalidOrientation => write!(f, "rotation matrix not right handed. this represents reflection matrix."),
         }
     }
 }
-
-impl core::error::Error for MatrixError {}
 
 #[derive(Debug, PartialEq)]
 pub enum ScrewError {
