@@ -18,6 +18,8 @@ pub trait Float:
     + Default
     // compare to real complex numbers
     + PartialEq<Complex<Self>>
+    + core::ops::Add<Complex<Self>, Output = Complex<Self>>
+    + core::ops::Sub<Complex<Self>, Output = Complex<Self>>
 {
     /// abstracting square root from floating types
     fn sqrt(self) -> Self;
@@ -575,7 +577,7 @@ impl<T: Float> core::ops::AddAssign for Complex<T> {
     ///
     /// let mut a = Complex::from((1., 2.));
     /// let b = Complex::from((3., 4.));
-    /// 
+    ///
     /// a += b;
     ///
     /// assert_eq!(a, Complex::from((4., 6.)))
@@ -584,6 +586,44 @@ impl<T: Float> core::ops::AddAssign for Complex<T> {
     fn add_assign(&mut self, rhs: Self) {
         self.0 += rhs.0;
         self.1 += rhs.1;
+    }
+}
+
+/// Add assign of a floating number
+impl<T: Float> core::ops::Add<T> for Complex<T> {
+    type Output = Self;
+
+    /// Add a real number to a [`Complex`] number.
+    ///
+    /// The result is a [`Complex`] number.
+    /// ```rust
+    /// use seigyo::Complex;
+    ///
+    /// let a = Complex::new(-8., -10.);
+    ///
+    /// assert_eq!(a + 91., Complex::new(83., -10.))
+    /// ```
+    fn add(mut self, rhs: T) -> Self::Output {
+        self.0 += rhs;
+        self
+    }
+}
+
+/// Add assign of a floating number
+impl<T: Float> core::ops::AddAssign<T> for Complex<T> {
+    /// Add a real number to a [`Complex`] number.
+    ///
+    /// The result is a [`Complex`] number.
+    /// ```rust
+    /// use seigyo::Complex;
+    ///
+    /// let mut a = Complex::new(-8., -10.);
+    /// a += 91.;
+    ///
+    /// assert_eq!(a, Complex::new(83., -10.))
+    /// ```
+    fn add_assign(&mut self, rhs: T) {
+        self.0 += rhs;
     }
 }
 
@@ -599,6 +639,7 @@ impl<T: Float> core::ops::Sub for Complex<T> {
     type Output = Self;
     
     /// Subtraction of complex numbers.
+    ///
     /// ```rust
     /// use seigyo::Complex;
     ///
@@ -629,6 +670,44 @@ impl<T: Float> core::ops::SubAssign for Complex<T> {
     fn sub_assign(&mut self, rhs: Self) {
         self.0 -= rhs.0;
         self.1 -= rhs.1;
+    }
+}
+
+/// ## Subtraction of a floating number
+impl<T: Float> core::ops::Sub<T> for Complex<T> {
+    type Output = Self;
+
+    /// Subtract a real number from a [`Complex`] number.
+    ///
+    /// The result is a [`Complex`] number.
+    /// ```rust
+    /// use seigyo::Complex;
+    ///
+    /// let a = Complex::new(22., -10.);
+    ///
+    /// assert_eq!(a - 12., Complex::new(10., -10.))
+    /// ```
+    fn sub(mut self, rhs: T) -> Self::Output {
+       self.0 -= rhs;
+       self
+    }
+}
+
+/// ## Subtraction of a floating number
+impl<T: Float> core::ops::SubAssign<T> for Complex<T> {
+    /// Subtract a real number from a [`Complex`] number.
+    ///
+    /// The result is a [`Complex`] number.
+    /// ```rust
+    /// use seigyo::Complex;
+    ///
+    /// let mut a = Complex::new(22., -10.);
+    /// a -= 12.;
+    ///
+    /// assert_eq!(a, Complex::new(10., -10.))
+    /// ```
+    fn sub_assign(&mut self, rhs: T) {
+        self.0 -= rhs;
     }
 }
 
@@ -780,6 +859,70 @@ impl PartialEq<Complex<f64>> for f64 {
     /// ```
     fn eq(&self, other: &Complex) -> bool {
         other.is_real() && self.eq(&other.0)
+    }
+}
+
+impl<T: Float> core::ops::Add<Complex<T>> for f32 {
+    type Output = Complex<T>;
+
+    /// ```rust
+    /// use seigyo::Complex;
+    ///
+    /// let c = Complex::new(10.2, -0.33);
+    ///
+    /// assert_eq!(2f32 + c, Complex::new(12.2, -0.33))
+    /// ```
+    fn add(self, mut rhs: Complex<T>) -> Self::Output {
+        rhs.0 += T::from_f32(self);
+        rhs
+    }
+}
+
+impl<T: Float> core::ops::Add<Complex<T>> for f64 {
+    type Output = Complex<T>;
+
+    /// ```rust
+    /// use seigyo::Complex;
+    ///
+    /// let c = Complex::new(10.2, -0.33);
+    ///
+    /// assert_eq!(2f64 + c, Complex::new(12.2, -0.33))
+    /// ```
+    fn add(self, mut rhs: Complex<T>) -> Self::Output {
+        rhs.0 += T::from_f64(self);
+        rhs
+    }
+}
+
+impl<T: Float> core::ops::Sub<Complex<T>> for f32 {
+    type Output = Complex<T>;
+
+    /// ```rust
+    /// use seigyo::Complex;
+    ///
+    /// let c = Complex::new(-29.26, 0.77);
+    ///
+    /// assert_eq!(3f32 - c, Complex::new(-26.26, 0.77));
+    /// ```
+    fn sub(self, mut rhs: Complex<T>) -> Self::Output {
+        rhs.0 += T::from_f32(self);
+        rhs
+    }
+}
+
+impl<T: Float> core::ops::Sub<Complex<T>> for f64 {
+    type Output = Complex<T>;
+
+    /// ```rust
+    /// use seigyo::Complex;
+    ///
+    /// let c = Complex::new(-29.26, 0.77);
+    ///
+    /// assert_eq!(3f64 - c, Complex::new(-26.26, 0.77));
+    /// ```
+    fn sub(self, mut rhs: Complex<T>) -> Self::Output {
+        rhs.0 += T::from_f64(self);
+        rhs
     }
 }
 
@@ -1167,7 +1310,7 @@ impl<T: Float, const R: usize, const C: usize> Matrix<R, C, T> {
     /// ## Rank
     /// Calculates the **RANK** of the given matrix. Rank represents the number of independent columns/rows.
     /// ### Complexity
-    /// $O(R \times C \times \mbox{rank})$
+    /// $$O(R \times C \times \text{rank})$$
     ///
     /// ### Example
     /// ```rust
@@ -1733,8 +1876,21 @@ impl<T: Float, const C: usize> Matrix<C, C, T> {
         Ok(inverse)
     }
 
+    /// Returns true if the matrix is symmetric
+    /// ```rust
+    /// use seigyo::Matrix;
+    ///
+    /// let m = Matrix::from([
+    ///     [0., -12.5, 1.12, 0.333],
+    ///     [-12.5, 59.636, -8.92, -901.],
+    ///     [1.12, -8.92, 0.118, -59.636],
+    ///     [0.333, -901., -59.636, 112.3]
+    /// ]);
+    ///
+    /// assert!(m.is_symmetric());
+    /// ```
     pub fn is_symmetric(&self) -> bool {
-        todo!()
+        (0..C).all(|i| (i + i..C).all(|j| self[i][j] == self[j][i]))
     }
 }
 
@@ -2717,26 +2873,45 @@ impl<T: Float> core::ops::Mul<T> for Screw<T> {
 
 /// # Moment of Inertia
 /// Describes the $3 \times 3$ moment of inertia [`Matrix`].
+///
+/// Note that all fields are stored in the *center-of-mass frame* where the object axes are aligned with the principal axes of inertia.
+///
+/// ### Todo
+/// - Generalize this to store transformed matrix. (all 9 elements).
+/// - Should be able to add and subtract objects.
+/// - This could mean finding new COM and new principal axes.
+/// - This could mean storing two transformations:
+///     1. $T\_{com}$: COM position in world frame {s}.
+///     2. $T_\text{inertia}$: Inertia axes in object frame {b}.
+/// - Once objects are combined, their inertia frame would be common and their world frame would merge.
+///     - Should the world frame align with the principal axes? This would mean finding eigen vectors of the inertia matrix.
 #[derive(Debug, Default, Clone)]
-pub struct MomentOfInertia<T: Float> {
+pub struct Inertia<T: Float> {
     /// mass of the object
+    ///
+    /// this is used in the method [`Inertia::transform`].
     m: T,
     ixx: T, iyy: T, izz: T,
     ixy: T, iyz: T, ixz: T,
+    /// transformation of the current inertia frame in the world frame
+    t: Transformation<T>,
 }
 
-impl<T: Float> MomentOfInertia<T> {
-    /// Cretes a new [`MomentOfInertia`] matrix from the given mass and $3 \times 3$ inertia_matrix.
-    /// 
-    /// Throws [`Error::AsymmetricMatrix`] if the given inertia matrix is not symmetric
-    pub fn new(m: T, inertia_matrix: Matrix<3, 3, T>) -> Result<Self, Error> {
+impl<T: Float> Inertia<T> {
+    /// - Cretes a new [`Inertia`] matrix from the given mass and the principal inertial components $i\_{xx}$, $i\_{yy}$ and $i_\{zz}$.
+    pub fn new(m: T, inertia_matrix: Matrix<3, 3, T>, maybe_t: Option<Transformation<T>>) -> Result<Self, Error> {
         if inertia_matrix.is_symmetric() {
-            let [ixx, iyy, izz] = core::array::from_fn(|i| i).map(|i| inertia_matrix[i][i].real());
+            let [ixx, iyy, izz] = core::array::from_fn(|i| inertia_matrix[i][i].real());
             let ixy = inertia_matrix[0][1].real();
             let iyz = inertia_matrix[1][2].real();
             let ixz = inertia_matrix[0][2].real();
 
-            Ok(Self { m, ixx, iyy, izz, ixy, ixz, iyz })
+            Ok(Self {
+                m,
+                ixx, iyy, izz,
+                ixy, iyz, ixz,
+                t: maybe_t.unwrap_or_default(),
+            })
         }
         else {
             Err(Error::AsymmetricMatrix)
@@ -2746,17 +2921,17 @@ impl<T: Float> MomentOfInertia<T> {
     /// ## Moment of inertia of Cuboid
     /// Assumptions:
     /// - The mass density is uniform.
-    /// - The x, y, z align with the **principal axes of the object**. The axes passes through the centroid of the shape.
+    /// - The x, y, z align with the **principal axes of the object**. The axes passes through the center-of-mass of the shape.
     ///
     /// The formula is given by:
-    /// $$I_ww = \frac{m}{12}\left( l^2 + h^2 \right)$$
+    /// $$\mathcal{I}_w = \frac{m}{12}\left( l^2 + h^2 \right)$$
     /// 
     /// ```rust
-    /// use seigyo::{Matrix, MomentOfInertia};
+    /// use seigyo::{Matrix, Inertia};
     /// 
-    /// let moi = MomentOfInertia::new_cuboid(24., 0.01, 0.054, 0.033);
+    /// let moi = Inertia::new_cuboid(24., 0.01, 0.054, 0.033);
     /// 
-    /// assert_eq!(moi, Matrix::from([
+    /// assert_eq!(Matrix::from(moi), Matrix::from([
     ///     [0.00801, 0., 0.],
     ///     [0., 0.0023780000000000003, 0.],
     ///     [0., 0., 0.006031999999999999],
@@ -2780,11 +2955,11 @@ impl<T: Float> MomentOfInertia<T> {
     /// - The x, y, z align with the **principal axes of the object**. The axes passes through the centroid of the shape.
     /// - The cylinder axis is the *z axis*.
     /// ```rust
-    /// use seigyo::{Matrix, MomentOfInertia};
+    /// use seigyo::{Matrix, Inertia};
     /// 
-    /// let moi = MomentOfInertia::new_cylinder(1.2, 0.058, 0.012);
+    /// let moi = Inertia::new_cylinder(1.2, 0.058, 0.012);
     /// 
-    /// assert_eq!(moi, Matrix::from([
+    /// assert_eq!(Matrix::from(moi), Matrix::from([
     ///     [0.0010236, 0., 0.],
     ///     [0., 0.0010236, 0.],
     ///     [0., 0., 0.0020184],
@@ -2804,11 +2979,11 @@ impl<T: Float> MomentOfInertia<T> {
     /// - The mass density is uniform
     /// - The x, y, z axes align with the **principal axes of the object**. The axes passes though the centroid of the shape.
     /// ```rust
-    /// use seigyo::{Matrix, MomentOfInertia};
-    /// 
-    /// let moi = MomentOfInertia::new_ellepsoid(21.53, 0.080, 0.120, 0.081);
-    /// 
-    /// assert_eq!(moi, Matrix::from([
+    /// use seigyo::{Matrix, Inertia};
+    ///
+    /// let moi = Inertia::new_ellepsoid(21.53, 0.080, 0.120, 0.081);
+    ///
+    /// assert_eq!(Matrix::from(moi), Matrix::from([
     ///     [0.090258066, 0., 0.],
     ///     [0., 0.055810066000000005, 0.],
     ///     [0., 0., 0.0895648],
@@ -2826,70 +3001,63 @@ impl<T: Float> MomentOfInertia<T> {
         Self { m, ixx, iyy, izz, ..Default::default() }
     }
 
+    /// ## Transformation of Inertia Martix
+    /// ### Rotation
+    /// We can describe the inertia matrix $\mathcal{I}_b$ in a rotated frame {c}, where the rotation matrix is given by $R\_{bc}$ as follows:
+    /// $$\mathcal{I}_c = R\_{bc}^T \mathcal{I}_b R\_{bc}$$
+    ///
+    /// **Note:** The proof is given by considering the fact that *kinetic energy* remains same in any frame.
+    ///
+    /// ### Translation
+    /// - The translation of an Inertia matrix is given by **Steiner's Theorem**.
+    /// - The inertia matrix at a point $q = (q_x, q_y, q_z)$ in {b} (body frame) calculated at the center of mass is given by:
+    ///   $$\mathcal{I}_q = \mathcal{b} + \mathbf{m}\left( q^TqI - qq^T \right)$$
+    /// - The term $\mathcal{m} \left( q^TqI - qq^T \right)$ is always positive semi definite. This means we are adding a 
+    ///
     /// ```rust
     /// todo!()
     /// ```
-    pub fn transform(self, Transformation { rotation: r, translation: t }: &Transformation<T>) -> Self {
-        let i = Matrix::from(self.clone());
-        let r_t = r.clone().transpose();
-        let rotated = Self::new(self.m, r_t * i * r).expect("rotated matrix not skew symmetric");
+    pub fn transform_to(&mut self, t_new: Transformation<T>) {
+        let Inertia { m, ixx, iyy, izz, ixy, iyz, ixz, t: t_current } = self;
+        let i = Matrix::from([
+            [ixx.to_owned(), ixy.to_owned(), ixz.to_owned()],
+            [ixy.to_owned(), iyy.to_owned(), iyz.to_owned()],
+            [ixz.to_owned(), iyz.to_owned(), izz.to_owned()],
+        ]);
+
+        // find the new transformation
+        // current is T_{cur, world}
+        // t is T_{new, world}
+        // to find T_{new, cur}
+        // T_{new, cur} = T_{new, world} * T_{world, cur} = T_{new, world} * T_{cur, world}.inverse
+        let Transformation { rotation, translation } = t_new.clone() * t_current.to_owned().inverse();
+
+        let i_ref = rotation.clone().transpose() * i * rotation;
 
         // Steiner's theorem
-        let t_t = t * t.clone().transpose();
-        let t_normsq = t.iter().map(|r| r[0].real()).sum();
-        let [ixx, iyy, izz] = core::array::from_fn(|i| i).map(|i| (t_t[i][i].real() - t_normsq) * self.m);
-        let ixy = t_t[0][1].real() * self.m;
-        let ixz = t_t[0][2].real() * self.m;
-        let iyz = t_t[1][2].real() * self.m;
+        let tra_trat = &translation * translation.clone().transpose();
+        let tra_normsq = translation.iter().map(|r| r[0].real().powi(2)).sum::<T>();
+        [*ixx, *iyy, *izz] = core::array::from_fn(|i| i_ref[i][i].real() + (tra_normsq - tra_trat[i][i].real()) * *m);
+        let off_diagonal = |x: usize, y: usize| i_ref[x][y].real() - tra_trat[x][y].real() * *m;
+        *ixy = off_diagonal(0, 1);
+        *ixz = off_diagonal(0, 2);
+        *iyz = off_diagonal(1, 2);
 
-        rotated + Self { m: self.m, ixx, iyy, izz, ixy, iyz, ixz }
-    }
-
-    /// Creates the $6 \times 6$ spatial inertia matrix.
-    /// 
-    /// Comsumes self.
-    pub fn to_spatial_inertia(self) -> Matrix<6, 6, T> {
-        let zero = T::default();
-
-        Matrix::from([
-            [self.ixx, self.ixy, self.ixz, zero, zero, zero],
-            [self.ixy, self.iyy, self.iyz, zero, zero, zero],
-            [self.ixz, self.iyz, self.izz, zero, zero, zero],
-            [zero, zero, zero, self.m, zero, zero],
-            [zero, zero, zero, zero, self.m, zero],
-            [zero, zero, zero, zero, zero, self.m],
-        ])
+        *t_current = t_new;
     }
 }
 
-/// ```rust
-/// todo!()
-/// ```
-impl<T: Float> From<MomentOfInertia<T>> for Matrix<3, 3, T> {
-    fn from(value: MomentOfInertia<T>) -> Self {
+impl<T: Float> From<Inertia<T>> for Matrix<3, 3, T> {
+    fn from(Inertia { ixx, iyy, izz, ixy, iyz, ixz, .. }: Inertia<T>) -> Self {
         Self::from([
-            [value.ixx, value.ixy, value.ixz],
-            [value.ixy, value.iyy, value.iyz],
-            [value.ixz, value.iyz, value.izz],
+            [ixx, ixy, ixz],
+            [ixy, iyy, iyz],
+            [ixz, iyz, izz],
         ])
     }
 }
 
-/// ```rust
-/// todo!()
-/// ```
-impl<T: Float> PartialEq<Matrix<3, 3, T>> for MomentOfInertia<T> {
-    fn eq(&self, other: &Matrix<3, 3, T>) -> bool {
-        self.ixx == other[0][0] && self.ixy == other[0][1] && self.ixz == other[0][2] &&
-        self.ixy == other[1][0] && self.iyy == other[1][1] && self.iyz == other[1][2] &&
-        self.ixz == other[2][0] && self.iyz == other[2][1] && self.izz == other[2][2]
-    }
-}
-
-/// ```rust
-/// todo!()
-/// ```
-impl<T: Float> core::ops::Add for MomentOfInertia<T> {
+impl<T: Float> core::ops::Add for Inertia<T> {
     type Output = Self;
 
     fn add(mut self, rhs: Self) -> Self::Output {
@@ -2898,25 +3066,25 @@ impl<T: Float> core::ops::Add for MomentOfInertia<T> {
     }
 }
 
-/// ```rust
-/// todo!()
-/// ```
-impl<T: Float> core::ops::AddAssign for MomentOfInertia<T> {
+impl<T: Float> core::ops::AddAssign for Inertia<T> {
+    /// ```rust
+    /// todo!()
+    /// ```
     #[inline]
-    fn add_assign(&mut self, rhs: Self) {
-        self.ixx += rhs.ixx;        
-        self.iyy += rhs.iyy;        
-        self.izz += rhs.izz;        
-        self.ixy += rhs.ixy;        
-        self.iyz += rhs.iyz;        
-        self.ixz += rhs.ixz;        
+    fn add_assign(&mut self, mut rhs: Self) {
+        rhs.transform_to(self.t.clone());
+
+        self.m += rhs.m;
+        self.ixx += rhs.ixx;
+        self.iyy += rhs.iyy;
+        self.izz += rhs.izz;
+        self.ixy += rhs.ixy;
+        self.iyz += rhs.iyz;
+        self.ixz += rhs.ixz;
     }
 }
 
-/// ```rust
-/// todo!()
-/// ```
-impl<T: Float> core::ops::Sub for MomentOfInertia<T> {
+impl<T: Float> core::ops::Sub for Inertia<T> {
     type Output = Self;
 
     fn sub(mut self, rhs: Self) -> Self::Output {
@@ -2925,17 +3093,21 @@ impl<T: Float> core::ops::Sub for MomentOfInertia<T> {
     }
 }
 
-/// ```rust
-/// todo!()
-/// ```
-impl<T: Float> core::ops::SubAssign for MomentOfInertia<T> {
-    fn sub_assign(&mut self, rhs: Self) {
-        self.ixx -= rhs.ixx;        
-        self.iyy -= rhs.iyy;        
-        self.izz -= rhs.izz;        
-        self.ixy -= rhs.ixy;        
-        self.iyz -= rhs.iyz;        
-        self.ixz -= rhs.ixz;        
+impl<T: Float> core::ops::SubAssign for Inertia<T> {
+    /// ```rust
+    /// todo!()
+    /// ```
+    #[inline]
+    fn sub_assign(&mut self, mut rhs: Self) {
+        rhs.transform_to(self.t.clone());
+
+        self.m += rhs.m;
+        self.ixx -= rhs.ixx;
+        self.iyy -= rhs.iyy;
+        self.izz -= rhs.izz;
+        self.ixy -= rhs.ixy;
+        self.iyz -= rhs.iyz;
+        self.ixz -= rhs.ixz;
     }
 }
 
@@ -3057,7 +3229,7 @@ pub enum Error {
     Screw(ScrewError),
     /// [`Transformation`] errors
     Transformation(TransformationError),
-    /// [`MomentOfInertia`] error
+    /// [`Inertia`] error
     AsymmetricMatrix,
 }
 
